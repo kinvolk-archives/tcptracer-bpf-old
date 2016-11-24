@@ -115,8 +115,10 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 			return populate_prog_array(event, fd);
 
 		snprintf(buf, sizeof(buf),
-			 "echo '%c:%s %s' >> /sys/kernel/debug/tracing/kprobe_events",
-			 is_kprobe ? 'p' : 'r', event, event);
+			 "echo '%c:%c%s %s' >> /sys/kernel/debug/tracing/kprobe_events",
+			 is_kprobe ? 'p' : 'r',
+			 is_kprobe ? 'p' : 'r',
+			 event, event);
 		err = system(buf);
 		if (err < 0) {
 			printf("failed to create kprobe '%s' error '%s'\n",
@@ -126,6 +128,10 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 
 		strcpy(buf, DEBUGFS);
 		strcat(buf, "events/kprobes/");
+		if (is_kprobe)
+			strcat(buf, "p");
+		else
+			strcat(buf, "r");
 		strcat(buf, event);
 		strcat(buf, "/id");
 	} else if (is_tracepoint) {
