@@ -130,16 +130,21 @@ static void print_bpf_output(void *data, int size)
 {
 	static __u64 cnt;
 	struct {
-		__u64 pid;
-		__u32 netns;
-		__u16 dport;
+		char ev_type[12];
+		__u32 pid;
+#define TASK_COMM_LEN 16
+		char comm[TASK_COMM_LEN];
+		__u32 saddr;
+		__u32 daddr;
 		__u16 sport;
+		__u16 dport;
+		__u32 netns;
 	} *e = data;
 
 
 	cnt++;
 
-	printf("tcp_v4_connect pid %lld dport %d\n", e->pid, e->dport);
+	printf("tcp_v4_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
 }
 
 static void test_bpf_perf_event(void)
@@ -160,8 +165,6 @@ static void test_bpf_perf_event(void)
 
 int main(int argc, char **argv)
 {
-	FILE *f;
-
 	if (load_bpf_file("trace_output_kern.o")) {
 		printf("%s\n", bpf_log_buf);
 		return 1;
