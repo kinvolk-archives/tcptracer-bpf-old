@@ -14,6 +14,7 @@ trace_output_kern.o: trace_output_kern.c
 		-I $(KERNEL_HEADERS)/arch/x86/include \
 		-I $(KERNEL_HEADERS)/arch/x86/include/generated \
 		-I $(KERNEL_HEADERS)/include \
+		-I $(KERNEL_HEADERS)/include/generated/uapi \
 		-o - | llc -march=bpf -filetype=obj -o $@
 
 clean:
