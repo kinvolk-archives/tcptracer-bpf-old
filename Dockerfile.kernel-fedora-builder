@@ -1,0 +1,12 @@
+FROM fedora:24
+
+RUN dnf install -y llvm clang
+#RUN dnf install -y kernel-devel-4.7.9-200.fc24.x86_64
+RUN dnf install -y kernel-devel
+
+WORKDIR /src
+
+COPY build-ebpf.sh bpf_helpers.h trace_output_kern.c /src/
+
+RUN /src/build-ebpf.sh
+
