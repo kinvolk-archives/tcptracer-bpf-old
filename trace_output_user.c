@@ -20,6 +20,8 @@
 #include <time.h>
 #include <signal.h>
 #include <linux/hw_breakpoint.h>
+#include <sys/utsname.h>
+
 #include "libbpf.h"
 #include "bpf_load.h"
 
@@ -165,12 +167,22 @@ static void test_bpf_perf_event(void)
 
 int main(int argc, char **argv)
 {
-	if (argc != 2) {
+	char filename[256] = {0,};
+
+	if (argc == 1) {
+		struct utsname u = {0,};
+		uname(&u);
+
+		snprintf(filename, sizeof(filename), "/ebpf/%s/%s/ebpf.o", u.machine, u.release);
+	} else if (argc == 2) {
+		snprintf(filename, sizeof(filename), "%s", argv[1]);
+	} else {
 		printf("Usage: %s path/ebpf.ko\n", argv[0]);
 		return 1;
 	}
 
-	if (load_bpf_file(argv[1])) {
+	printf("Loading %s\n", filename);
+	if (load_bpf_file(filename)) {
 		printf("%s\n", bpf_log_buf);
 		return 1;
 	}
