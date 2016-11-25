@@ -165,7 +165,12 @@ static void test_bpf_perf_event(void)
 
 int main(int argc, char **argv)
 {
-	if (load_bpf_file("trace_output_kern.o")) {
+	if (argc != 2) {
+		printf("Usage: %s path/ebpf.ko\n", argv[0]);
+		return 1;
+	}
+
+	if (load_bpf_file(argv[1])) {
 		printf("%s\n", bpf_log_buf);
 		return 1;
 	}
