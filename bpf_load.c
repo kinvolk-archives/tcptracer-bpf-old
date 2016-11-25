@@ -66,8 +66,8 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 		prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
 	} else if (is_kprobe || is_kretprobe) {
 		prog_type = BPF_PROG_TYPE_KPROBE;
-	} else if (is_tracepoint) {
-		prog_type = BPF_PROG_TYPE_TRACEPOINT;
+	//} else if (is_tracepoint) {
+	//	prog_type = BPF_PROG_TYPE_TRACEPOINT;
 	//} else if (is_xdp) {
 	//	prog_type = BPF_PROG_TYPE_XDP;
 	//} else if (is_perf_event) {

@@ -51,10 +51,10 @@ static int (*bpf_skb_get_tunnel_key)(void *ctx, void *key, int size, int flags) 
 	(void *) BPF_FUNC_skb_get_tunnel_key;
 static int (*bpf_skb_set_tunnel_key)(void *ctx, void *key, int size, int flags) =
 	(void *) BPF_FUNC_skb_set_tunnel_key;
-static int (*bpf_skb_get_tunnel_opt)(void *ctx, void *md, int size) =
-	(void *) BPF_FUNC_skb_get_tunnel_opt;
-static int (*bpf_skb_set_tunnel_opt)(void *ctx, void *md, int size) =
-	(void *) BPF_FUNC_skb_set_tunnel_opt;
+//static int (*bpf_skb_get_tunnel_opt)(void *ctx, void *md, int size) =
+//	(void *) BPF_FUNC_skb_get_tunnel_opt;
+//static int (*bpf_skb_set_tunnel_opt)(void *ctx, void *md, int size) =
+//	(void *) BPF_FUNC_skb_set_tunnel_opt;
 static unsigned long long (*bpf_get_prandom_u32)(void) =
 	(void *) BPF_FUNC_get_prandom_u32;
 
