@@ -12,16 +12,15 @@ machine:
     PATH: $PATH:$HOME/.local/bin
 
 dependencies:
-  cache_directories:
-    - "~/docker"
   override:
-    - echo "no dependencies"
+    - |
+      cd $SRCDIR && ./build-kernel-builder.sh && ./build-user-builder.sh && ./build-user-env.sh
+      docker tag kinvolk/ebpf-kprobe-example:latest kinvolk/ebpf-kprobe-example:$(./tools/image-tag)
 
 test:
   override:
-    - cd $SRCDIR && ./build-kernel-builder.sh && ./build-user-builder.sh && ./build-user-env.sh:
-        parallel: false
-        timeout: 300
+    - |
+      echo "No tests"
 
 deployment:
   hub:
