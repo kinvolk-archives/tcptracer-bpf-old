@@ -133,6 +133,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
 
 	bpf_map_update_elem(&closesock, &pid, &sk, BPF_ANY);
+	return 0;
 }
 
 SEC("kretprobe/tcp_close")
