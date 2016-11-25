@@ -1,0 +1,48 @@
+general:
+  branches:
+    ignore:
+      - gh-pages
+
+machine:
+  services:
+    - docker
+  environment:
+    GOPATH: /home/ubuntu
+    SRCDIR: /home/ubuntu/ebpf-kprobe-example
+    PATH: $PATH:$HOME/.local/bin
+
+dependencies:
+  cache_directories:
+    - "~/docker"
+  override:
+    - echo "no dependencies"
+
+test:
+  override:
+    - cd $SRCDIR && ./build-kernel-builder.sh && ./build-user-builder.sh && ./build-user-env.sh:
+        parallel: false
+        timeout: 300
+
+deployment:
+  hub:
+    branch: master
+    commands:
+      - |
+        test -z "${DOCKER_USER}" || (
+          docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS &&
+          (test "${DOCKER_ORGANIZATION:-$DOCKER_USER}" == "kinvolk" || (
+            docker tag kinvolk/ebpf-kprobe-example:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:latest &&
+            docker tag kinvolk/ebpf-kprobe-example:$(./tools/image-tag) ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:$(./tools/image-tag)
+          )) &&
+          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example &&
+          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:$(./tools/image-tag)
+        )
+  hub-dev:
+    branch: /^((?!master).)*$/  # not the master branch
+    commands:
+      - >
+        test -z "${DEPLOY_BRANCH}" || test -z "${DOCKER_USER}" || (
+          docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS &&
+          docker tag kinvolk/ebpf-kprobe-example:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:${CIRCLE_BRANCH//\//-} &&
+          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:${CIRCLE_BRANCH//\//-}
+        )
