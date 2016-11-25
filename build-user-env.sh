@@ -2,6 +2,6 @@
 set -x
 set -e
 
-sudo docker build -t alban/ebpf-user-env -f Dockerfile.user-env .
+sudo docker build -t kinvolk/ebpf-kprobe-example -f Dockerfile.user-env .
 
 
