@@ -15,6 +15,7 @@
 #include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <poll.h>
 #include <ctype.h>
 #include "libbpf.h"
@@ -46,6 +47,7 @@ static int populate_prog_array(const char *event, int prog_fd)
 
 static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 {
+	struct rlimit limit;
 	bool is_socket = strncmp(event, "socket", 6) == 0;
 	bool is_kprobe = strncmp(event, "kprobe/", 7) == 0;
 	bool is_kretprobe = strncmp(event, "kretprobe/", 10) == 0;
@@ -79,8 +81,20 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 
 	fd = bpf_prog_load(prog_type, prog, size, license, kern_version);
 	if (fd < 0) {
-		printf("bpf_prog_load() err=%d\n%s", errno, bpf_log_buf);
-		return -1;
+		if (errno == EPERM) {
+			printf("bpf_prog_load() err=%d\n%s\nupdate rlimit and try again\n", errno, bpf_log_buf);
+			limit.rlim_cur = 128 * 1024;
+			limit.rlim_max = 128 * 1024;
+			if (setrlimit(RLIMIT_MEMLOCK, &limit) != 0) {
+				printf("setrlimit() failed with errno=%d\n", errno);
+				return -1;
+			}
+			fd = bpf_prog_load(prog_type, prog, size, license, kern_version);
+			if (fd < 0) {
+				printf("bpf_prog_load() err=%d\n%s", errno, bpf_log_buf);
+				return -1;
+			}
+		}
 	}
 
 	prog_fd[prog_cnt++] = fd;
