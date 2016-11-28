@@ -93,6 +93,8 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	struct sock **skpp;
 	char called_msg[] = "kretprobe/tcp_v4_connect called\n";
 
+	bpf_trace_printk(called_msg, sizeof(called_msg));
+
 	skpp = bpf_map_lookup_elem(&connectsock_v4, &pid);
 	if (skpp == 0) {
 		return 0;	// missed entry
@@ -169,6 +171,8 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
     u64 pid = bpf_get_current_pid_tgid();
     struct sock **skpp;
     char called_msg[] = "kretprobe/tcp_v6_connect called\n";
+
+    bpf_trace_printk(called_msg, sizeof(called_msg));
 
     skpp = bpf_map_lookup_elem(&connectsock_v6, &pid);
     if (skpp == 0) {
@@ -260,6 +264,8 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 	u64 pid = bpf_get_current_pid_tgid();
 	struct sock **skpp;
 	char called_msg[] = "kretprobe/tcp_close called\n";
+
+	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	skpp = bpf_map_lookup_elem(&closesock, &pid);
 	if (skpp == 0) {
