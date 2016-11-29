@@ -25,6 +25,34 @@
 #include "libbpf.h"
 #include "bpf_load.h"
 
+/* TODO @alepuccetti: find out how to include this macro */
+#define TASK_COMM_LEN 16
+
+struct tcp_event_v4_t {
+	char ev_type[12];
+	__u32 pid;
+	char comm[TASK_COMM_LEN];
+	__u32 saddr;
+	__u32 daddr;
+	__u16 sport;
+	__u16 dport;
+	__u32 netns;
+};
+
+struct tcp_event_v6_t {
+	char ev_type[12];
+	__u32 pid;
+	char comm[TASK_COMM_LEN];
+	/* Using the type unsigned __int128 generates an error in the ebpf verifier */
+	__u64 saddr_h;
+	__u64 saddr_l;
+	__u64 daddr_h;
+	__u64 daddr_l;
+	__u16 sport;
+	__u16 dport;
+	__u32 netns;
+};
+
 static int pmu_fd;
 
 int page_size;
@@ -131,22 +159,18 @@ static __u64 start_time;
 static void print_bpf_output(void *data, int size)
 {
 	static __u64 cnt;
-	struct {
-		char ev_type[12];
-		__u32 pid;
-#define TASK_COMM_LEN 16
-		char comm[TASK_COMM_LEN];
-		__u32 saddr;
-		__u32 daddr;
-		__u16 sport;
-		__u16 dport;
-		__u32 netns;
-	} *e = data;
 
-
-	cnt++;
-
-	printf("tcp_v4_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
+	if (size == sizeof(struct tcp_event_v4_t)) {
+		cnt++;
+		struct tcp_event_v4_t* e = data;
+		printf("tcp_v4_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
+	} else if (size == sizeof(struct tcp_event_v6_t)) {
+		cnt++;
+		struct tcp_event_v6_t* e = data;
+		printf("tcp_v6_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
+	} else {
+		printf("ERROR: struct not recognised, size: %d\n", size);
+	}
 }
 
 static void test_bpf_perf_event(void)
