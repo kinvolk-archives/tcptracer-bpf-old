@@ -128,7 +128,7 @@ void perf_event_read(print_fn fn)
 		}
 
 		if (e->header.type == PERF_RECORD_SAMPLE) {
-			fn(e->data, e->size);
+			fn(e->data, e->size - sizeof(struct perf_event_header));
 		} else if (e->header.type == PERF_RECORD_LOST) {
 			struct {
 				struct perf_event_header header;
@@ -160,11 +160,11 @@ static void print_bpf_output(void *data, int size)
 {
 	static __u64 cnt;
 
-	if (size == sizeof(struct tcp_event_v4_t)) {
+	if (size - 4 == sizeof(struct tcp_event_v4_t)) {
 		cnt++;
 		struct tcp_event_v4_t* e = data;
 		printf("tcp_v4_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
-	} else if (size == sizeof(struct tcp_event_v6_t)) {
+	} else if (size - 4 == sizeof(struct tcp_event_v6_t)) {
 		cnt++;
 		struct tcp_event_v6_t* e = data;
 		printf("tcp_v6_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
