@@ -221,9 +221,8 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		.pid = pid >> 32,
 		.saddr = saddr,
 		.daddr = daddr,
-		// TODO alepuccetti: fix network byte order
-		.sport = sport,
-		.dport = dport,
+		.sport = ntohs(sport),
+		.dport = ntohs(dport),
 		.netns = net_ns_inum,
 	};
 
@@ -322,8 +321,8 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 			.pid = pid >> 32,
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = sport,
-			.dport = dport,
+			.sport = ntohs(sport),
+			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
 
