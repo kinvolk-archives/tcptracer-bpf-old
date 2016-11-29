@@ -137,7 +137,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 	// do not send event if IP address is 0.0.0.0 or port is 0
 	if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-		bpf_perf_event_output(ctx, &tcp_event_v4, 0, &evt, sizeof(evt));
+		bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 	}
 
 	bpf_map_delete_elem(&connectsock_v4, &pid);
@@ -231,7 +231,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 
 	// do not send event if IP address is :: or port is 0
 	if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-		bpf_perf_event_output(ctx, &tcp_event_v6, 0, &evt, sizeof(evt));
+		bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 	}
 
 	bpf_map_delete_elem(&connectsock_v6, &pid);
@@ -309,7 +309,7 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 
 		// do not send event if IP address is 0.0.0.0 or port is 0
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v4, 0, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
 
 		bpf_map_delete_elem(&closesock, &pid);
@@ -336,7 +336,7 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 
 		// do not send event if IP address is :: or port is 0
 		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v6, 0, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
 
 		bpf_map_delete_elem(&closesock, &pid);
@@ -393,7 +393,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is 0.0.0.0 or port is 0
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v4, 0, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
 	} else if (family == AF_INET6) {
 		struct tcp_event_v6_t evt = {.ev_type = "accept", .netns = net_ns_inum};
@@ -407,7 +407,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is :: or port is 0
 		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v6, 0, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
 	}
 	// else drop
