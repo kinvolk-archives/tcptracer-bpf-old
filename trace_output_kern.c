@@ -24,8 +24,11 @@ struct tcp_event_v6_t {
 	char ev_type[12];
 	u32 pid;
 	char comm[TASK_COMM_LEN];
-	unsigned __int128 saddr;
-	unsigned __int128 daddr;
+	/* Using the type unsigned __int128 generates an error in the ebpf verifier */
+	u64 saddr_h;
+	u64 saddr_l;
+	u64 daddr_h;
+	u64 daddr_l;
 	u16 sport;
 	u16 dport;
 	u32 netns;
@@ -183,7 +186,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	// pull in details
 	struct sock *skp = *skpp;
 	struct ns_common *ns;
-	unsigned __int128 saddr = 0, daddr = 0;
+	u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
 	u32 net_ns_inum = 0;
 	u16 sport = 0, dport = 0;
 	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
@@ -195,11 +198,13 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		return 0;
 	}
 
-	bpf_probe_read(&saddr, sizeof(saddr), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-	bpf_probe_read(&daddr, sizeof(daddr), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	bpf_probe_read(&saddr_h, sizeof(saddr_h), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+	bpf_probe_read(&saddr_l, sizeof(saddr_l), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
+	bpf_probe_read(&daddr_h, sizeof(daddr_h), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	bpf_probe_read(&daddr_l, sizeof(daddr_l), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
 
 	// if addresses are 0, ignore
-	if (saddr == 0 || daddr == 0) {
+	if (!(saddr_h || saddr_l) || !(daddr_h || daddr_l)) {
 		bpf_map_delete_elem(&connectsock_v6, &pid);
 		return 0;
 	}
@@ -213,8 +218,10 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	struct tcp_event_v6_t evt = {
 		.ev_type = "connect",
 		.pid = pid >> 32,
-		.saddr = saddr,
-		.daddr = daddr,
+		.saddr_h = saddr_h,
+		.saddr_l = saddr_l,
+		.daddr_h = daddr_h,
+		.daddr_l = daddr_l,
 		.sport = ntohs(sport),
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
@@ -223,7 +230,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 
 	// do not send event if IP address is :: or port is 0
-	if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
+	if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
 		bpf_perf_event_output(ctx, &tcp_event_v6, 0, &evt, sizeof(evt));
 	}
 
@@ -272,12 +279,10 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 	// pull in details
 	struct sock *skp = *skpp;
 	struct ns_common *ns;
-	u32 saddr = 0, daddr = 0, net_ns_inum = 0;
+	u32 net_ns_inum = 0;
 	u16 family = 0, sport = 0, dport = 0;
 	bpf_probe_read(&family, sizeof(family), &skp->__sk_common.skc_family);
 	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-	bpf_probe_read(&saddr, sizeof(saddr), &skp->__sk_common.skc_rcv_saddr);
-	bpf_probe_read(&daddr, sizeof(daddr), &skp->__sk_common.skc_daddr);
 	bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
 
 	// Get network namespace id
@@ -286,6 +291,9 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
 
 	if (family == AF_INET) {
+		u32 saddr = 0, daddr = 0;
+		bpf_probe_read(&saddr, sizeof(saddr), &skp->__sk_common.skc_rcv_saddr);
+		bpf_probe_read(&daddr, sizeof(daddr), &skp->__sk_common.skc_daddr);
 		// output
 		struct tcp_event_v4_t evt = {
 			.ev_type = "connect",
@@ -306,12 +314,19 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 
 		bpf_map_delete_elem(&closesock, &pid);
 	} else if (family == AF_INET6) {
+		u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
+		bpf_probe_read(&saddr_h, sizeof(saddr_h), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		bpf_probe_read(&saddr_l, sizeof(saddr_l), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
+		bpf_probe_read(&daddr_h, sizeof(daddr_h), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
+		bpf_probe_read(&daddr_l, sizeof(daddr_l), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
 		// output
 		struct tcp_event_v6_t evt = {
 			.ev_type = "connect",
 			.pid = pid >> 32,
-			.saddr = saddr,
-			.daddr = daddr,
+			.saddr_h = saddr_h,
+			.saddr_l = saddr_l,
+			.daddr_h = daddr_h,
+			.daddr_l = daddr_l,
 			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
@@ -319,14 +334,16 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 
-		// do not send event if IP address is 0.0.0.0 or port is 0
-		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
+		// do not send event if IP address is :: or port is 0
+		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_v6, 0, &evt, sizeof(evt));
 		}
 
 		bpf_map_delete_elem(&closesock, &pid);
 	} else {
-		// ???
+		char called_msg[] = "kretprobe/tcp_close: socket family not supported\n";
+		bpf_trace_printk(called_msg, sizeof(called_msg));
+		return 0;
 	}
 
 	return 0;
@@ -381,15 +398,15 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	} else if (family == AF_INET6) {
 		struct tcp_event_v6_t evt = {.ev_type = "accept", .netns = net_ns_inum};
 		evt.pid = pid >> 32;
-		bpf_probe_read(&evt.saddr, sizeof(unsigned __int128),
-			&newsk->__sk_common.skc_rcv_saddr);
-		bpf_probe_read(&evt.daddr, sizeof(unsigned __int128),
-			&newsk->__sk_common.skc_daddr);
-			evt.sport = lport;
+		bpf_probe_read(&evt.saddr_h, sizeof(evt.saddr_h), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		bpf_probe_read(&evt.saddr_l, sizeof(evt.saddr_l), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
+		bpf_probe_read(&evt.daddr_h, sizeof(evt.daddr_h), &newsk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
+		bpf_probe_read(&evt.daddr_l, sizeof(evt.daddr_l), &newsk->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
+		evt.sport = lport;
 		evt.dport = ntohs(dport);
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is :: or port is 0
-		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
+		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_v6, 0, &evt, sizeof(evt));
 		}
 	}
