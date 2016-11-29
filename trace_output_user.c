@@ -186,6 +186,7 @@ static void test_bpf_perf_event(void)
 
 	assert(pmu_fd >= 0);
 	assert(bpf_update_elem(map_fd[0], &key, &pmu_fd, BPF_ANY) == 0);
+	assert(bpf_update_elem(map_fd[1], &key, &pmu_fd, BPF_ANY) == 0);
 	ioctl(pmu_fd, PERF_EVENT_IOC_ENABLE, 0);
 }
 
