@@ -71,14 +71,11 @@ int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 {
 	struct sock *sk;
 	u64 pid = bpf_get_current_pid_tgid();
-	u16 dport = 0;
 	char called_msg[] = "kprobe/tcp_v4_connect called\n";
 
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
-
-	bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
 
 	bpf_map_update_elem(&connectsock_v4, &pid, &sk, BPF_ANY);
 
@@ -150,14 +147,11 @@ int kprobe__tcp_v6_connect(struct pt_regs *ctx)
 {
 	struct sock *sk;
 	u64 pid = bpf_get_current_pid_tgid();
-	u16 dport = 0;
 	char called_msg[] = "kprobe/tcp_v6_connect called\n";
 
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
-
-	bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
 
 	bpf_map_update_elem(&connectsock_v6, &pid, &sk, BPF_ANY);
 
@@ -243,14 +237,11 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 {
 	struct sock *sk;
 	u64 pid = bpf_get_current_pid_tgid();
-	u16 dport = 0;
 	char called_msg[] = "kprobe/tcp_close called\n";
 
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
-
-	bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
 
 	bpf_map_update_elem(&closesock, &pid, &sk, BPF_ANY);
 	return 0;
