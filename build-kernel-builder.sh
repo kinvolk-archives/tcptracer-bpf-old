@@ -2,11 +2,11 @@
 set -x
 set -e
 
-sudo docker build -t kinvolk/ebpf-kernel-builder -f Dockerfile.kernel-fedora-builder .
-
 mkdir -p ebpf/
 
-sudo docker run -v $PWD:/host/ kinvolk/ebpf-kernel-builder /bin/sh -c 'cp -r /src/ebpf/* /host/ebpf/'
+for DISTRO in fedora ; do
+  sudo docker build -t kinvolk/ebpf-kernel-${DISTRO}-builder -f Dockerfile.kernel-${DISTRO}-builder .
+  sudo docker run -v $PWD:/host/ kinvolk/ebpf-kernel-${DISTRO}-builder /bin/sh -c 'cp -r /src/ebpf/* /host/ebpf/'
+done
+
 sudo chown -R $UID:$UID ebpf
-
-
