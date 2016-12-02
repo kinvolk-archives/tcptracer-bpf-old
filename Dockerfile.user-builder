@@ -2,6 +2,5 @@ FROM alpine:edge
 
 RUN apk update && apk add build-base linux-headers libelf libelf-dev
 
+RUN mkdir -p /src
 WORKDIR /src
-COPY *.c *.h /src/
-RUN gcc -Wall -Wno-unused-variable -o trace_output_user trace_output_user.c bpf_load.c libbpf.c -lelf

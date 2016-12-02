@@ -1,24 +1,25 @@
-#!/bin/sh
+#!/bin/bash
 
-KERNEL_VERSION="4.8.8-200.fc24.x86_64"
+test -n "$DEBUG" && set -x
+set -eu
 
-ls -l /usr/src/kernels/
+if [ $# -lt 2 ]; then
+  echo "Usage: %s <ebpf.c file> <destdir> [<kernel version>]" >&2
+  exit 1
+fi
 
-KERNEL_HEADERS=/usr/src/kernels/${KERNEL_VERSION}
-ARCH=$(uname -i)
-DEST=ebpf/${ARCH}/${KERNEL_VERSION}
-mkdir -p $DEST
+ARCH="$(uname -i)"
+SOURCE_FILE="$1"
+DEST_DIR="dist/${ARCH}/${KERNEL_VERSION}"
 
-echo "KERNEL_HEADERS=$KERNEL_HEADERS"
-echo "DEST=$DEST"
+mkdir -p "${DEST_DIR}"
 
 clang -D__KERNEL__ -D__ASM_SYSREG_H \
 		-Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types \
-		-O2 -emit-llvm -c trace_output_kern.c \
-		-I ${KERNEL_HEADERS}/arch/x86/include \
-		-I ${KERNEL_HEADERS}/arch/x86/include/generated \
-		-I ${KERNEL_HEADERS}/include \
-		-o - | llc -march=bpf -filetype=obj -o ${DEST}/ebpf.o
-
-pwd
-find ebpf/
+    -O2 -emit-llvm -c "${SOURCE_FILE}" \
+		-I "${KERNEL_HEADERS}/arch/x86/include" \
+		-I "${KERNEL_HEADERS}/arch/x86/include/generated" \
+		-I "${KERNEL_HEADERS}/include" \
+    -I ${KERNEL_HEADERS/amd64/common}/arch/x86/include \
+    -I ${KERNEL_HEADERS/amd64/common}/include \
+		-o - | llc -march=bpf -filetype=obj -o "${DEST_DIR}/ebpf.o"
