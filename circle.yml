@@ -14,7 +14,7 @@ machine:
 dependencies:
   override:
     - |
-      cd $SRCDIR && ./build-kernel-builder.sh && ./build-user-builder.sh && ./build-user-env.sh
+      cd $SRCDIR && make fedora-24 && make trace-output-user && make user-env
       docker tag kinvolk/ebpf-kprobe-example:latest kinvolk/ebpf-kprobe-example:$(./tools/image-tag)
 
 test:

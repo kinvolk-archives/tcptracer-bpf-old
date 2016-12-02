@@ -5,4 +5,4 @@ RUN apk update && apk add libelf
 COPY ebpf/ /ebpf/
 COPY trace_output_user /bin/
 
-CMD /bin/trace_output_user
+ENTRYPOINT ["/bin/trace_output_user"]
