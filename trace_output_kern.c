@@ -364,6 +364,9 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
+	} else {
+		char msg[] = "kretprobe/tcp_close: socket family not supported\n";
+		bpf_trace_printk(msg, sizeof(msg));
 	}
 	// else drop
 
