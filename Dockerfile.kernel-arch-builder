@@ -1,8 +1,11 @@
 FROM base/archlinux
 
-RUN pacman -Sy --noconfirm archlinux-keyring
-RUN pacman -Syu --noconfirm && pacman-db-upgrade
-RUN pacman -Sy && pacman -S --noconfirm ca-certificates-mozilla && pacman -S llvm clang make linux-headers
+RUN \
+    pacman -Sy --noconfirm archlinux-keyring && \
+    pacman -Syu --noconfirm && \
+    pacman-db-upgrade && \
+    pacman -S --noconfirm ca-certificates-mozilla && \
+    pacman -S --noconfirm llvm clang make linux-headers
 
 RUN mkdir -p /src
 
