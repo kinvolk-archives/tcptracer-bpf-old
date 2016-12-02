@@ -18,6 +18,8 @@ struct tcp_event_v4_t {
 	u16 sport;
 	u16 dport;
 	u32 netns;
+	u64 cpu;
+	u64 ts;
 };
 
 struct tcp_event_v6_t {
@@ -32,6 +34,8 @@ struct tcp_event_v6_t {
 	u16 sport;
 	u16 dport;
 	u32 netns;
+	u64 cpu;
+	u64 ts;
 };
 
 struct bpf_map_def SEC("maps") tcp_event_v4 = {
@@ -124,6 +128,8 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		.sport = ntohs(sport),
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
+		.cpu = bpf_get_smp_processor_id(),
+		.ts = bpf_ktime_get_ns(),
 	};
 
 	bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
@@ -218,6 +224,8 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		.sport = ntohs(sport),
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
+		.cpu = bpf_get_smp_processor_id(),
+		.ts = bpf_ktime_get_ns(),
 	};
 
 	bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
@@ -267,6 +275,8 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
+			.cpu = bpf_get_smp_processor_id(),
+			.ts = bpf_ktime_get_ns(),
 		};
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is 0.0.0.0 or port is 0
@@ -290,6 +300,8 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
+			.cpu = bpf_get_smp_processor_id(),
+			.ts = bpf_ktime_get_ns(),
 		};
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is :: or port is 0
@@ -337,7 +349,12 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	net_ns_inum = 0;
 #endif
 	if (family == AF_INET) {
-		struct tcp_event_v4_t evt = {.ev_type = "accept", .netns = net_ns_inum};
+		struct tcp_event_v4_t evt = {
+			.ev_type = "accept",
+			.netns = net_ns_inum,
+			.cpu = bpf_get_smp_processor_id(),
+			.ts = bpf_ktime_get_ns(),
+		};
 		evt.pid = pid >> 32;
 		bpf_probe_read(&evt.saddr, sizeof(u32),
 			&newsk->__sk_common.skc_rcv_saddr);
@@ -351,7 +368,12 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
 	} else if (family == AF_INET6) {
-		struct tcp_event_v6_t evt = {.ev_type = "accept", .netns = net_ns_inum};
+		struct tcp_event_v6_t evt = {
+			.ev_type = "accept",
+			.netns = net_ns_inum,
+			.cpu = bpf_get_smp_processor_id(),
+			.ts = bpf_ktime_get_ns(),
+		};
 		evt.pid = pid >> 32;
 		bpf_probe_read(&evt.saddr_h, sizeof(evt.saddr_h), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
 		bpf_probe_read(&evt.saddr_l, sizeof(evt.saddr_l), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
