@@ -62,13 +62,6 @@ struct bpf_map_def SEC("maps") connectsock_v6 = {
 	.max_entries = 128,
 };
 
-struct bpf_map_def SEC("maps") closesock = {
-	.type = BPF_MAP_TYPE_HASH,
-	.key_size = sizeof(__u64),
-	.value_size = sizeof(void *),
-	.max_entries = 128,
-};
-
 SEC("kprobe/tcp_v4_connect")
 int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 {
@@ -250,53 +243,24 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
-	bpf_map_update_elem(&closesock, &pid, &sk, BPF_ANY);
-	return 0;
-}
-
-SEC("kretprobe/tcp_close")
-int kretprobe__tcp_close(struct pt_regs *ctx)
-{
-	int ret = PT_REGS_RC(ctx);
-	u64 pid = bpf_get_current_pid_tgid();
-	struct sock **skpp;
-	char called_msg[] = "kretprobe/tcp_close called\n";
-
-	bpf_trace_printk(called_msg, sizeof(called_msg));
-
-	skpp = bpf_map_lookup_elem(&closesock, &pid);
-	if (skpp == 0) {
-		return 0;	// missed entry
-	}
-
-	if (ret != 0) {
-		// failed to send SYNC packet, may not have populated
-		// socket __sk_common.{skc_rcv_saddr, ...}
-		bpf_map_delete_elem(&closesock, &pid);
-		return 0;
-	}
-
-	// pull in details
-	struct sock *skp = *skpp;
-	struct ns_common *ns;
 	u32 net_ns_inum = 0;
 	u16 family = 0, sport = 0, dport = 0;
-	bpf_probe_read(&family, sizeof(family), &skp->__sk_common.skc_family);
-	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-	bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
+	bpf_probe_read(&family, sizeof(family), &sk->__sk_common.skc_family);
+	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)sk)->inet_sport);
+	bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
 
 	// Get network namespace id
 	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &skp->__sk_common.skc_net);
+	bpf_probe_read(&skc_net, sizeof(skc_net), &sk->__sk_common.skc_net);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
 
 	if (family == AF_INET) {
 		u32 saddr = 0, daddr = 0;
-		bpf_probe_read(&saddr, sizeof(saddr), &skp->__sk_common.skc_rcv_saddr);
-		bpf_probe_read(&daddr, sizeof(daddr), &skp->__sk_common.skc_daddr);
+		bpf_probe_read(&saddr, sizeof(saddr), &sk->__sk_common.skc_rcv_saddr);
+		bpf_probe_read(&daddr, sizeof(daddr), &sk->__sk_common.skc_daddr);
 		// output
 		struct tcp_event_v4_t evt = {
-			.ev_type = "connect",
+			.ev_type = "close",
 			.pid = pid >> 32,
 			.saddr = saddr,
 			.daddr = daddr,
@@ -304,24 +268,20 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
-
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
-
 		// do not send event if IP address is 0.0.0.0 or port is 0
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
-
-		bpf_map_delete_elem(&closesock, &pid);
 	} else if (family == AF_INET6) {
 		u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
-		bpf_probe_read(&saddr_h, sizeof(saddr_h), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		bpf_probe_read(&saddr_l, sizeof(saddr_l), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&daddr_h, sizeof(daddr_h), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		bpf_probe_read(&daddr_l, sizeof(daddr_l), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
+		bpf_probe_read(&saddr_h, sizeof(saddr_h), &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+		bpf_probe_read(&saddr_l, sizeof(saddr_l), &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
+		bpf_probe_read(&daddr_h, sizeof(daddr_h), &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
+		bpf_probe_read(&daddr_l, sizeof(daddr_l), &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
 		// output
 		struct tcp_event_v6_t evt = {
-			.ev_type = "connect",
+			.ev_type = "close",
 			.pid = pid >> 32,
 			.saddr_h = saddr_h,
 			.saddr_l = saddr_l,
@@ -331,21 +291,16 @@ int kretprobe__tcp_close(struct pt_regs *ctx)
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
-
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
-
 		// do not send event if IP address is :: or port is 0
 		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
-
-		bpf_map_delete_elem(&closesock, &pid);
 	} else {
-		char called_msg[] = "kretprobe/tcp_close: socket family not supported\n";
-		bpf_trace_printk(called_msg, sizeof(called_msg));
+		char msg[] = "kretprobe/tcp_close: socket family not supported\n";
+		bpf_trace_printk(msg, sizeof(msg));
 		return 0;
 	}
-
 	return 0;
 }
 
