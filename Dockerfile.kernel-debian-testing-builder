@@ -1,0 +1,7 @@
+FROM debian:testing
+
+RUN apt-get update && apt-get install -y -q clang llvm linux-headers-amd64
+
+RUN mkdir -p /src
+
+WORKDIR /src

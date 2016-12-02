@@ -1,0 +1,2 @@
+KERNEL_VERSION=4.8.8-200.fc24.x86_64
+KERNEL_HEADERS=/usr/src/kernels/4.8.8-200.fc24.x86_64
