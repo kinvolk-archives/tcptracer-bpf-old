@@ -1,6 +1,7 @@
 #!/bin/bash
 
 test -n "$DEBUG" && set -x
+set -x
 set -eu
 
 if [ $# -lt 2 ]; then
