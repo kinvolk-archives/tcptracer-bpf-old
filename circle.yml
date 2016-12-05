@@ -8,14 +8,14 @@ machine:
     - docker
   environment:
     GOPATH: /home/ubuntu
-    SRCDIR: /home/ubuntu/ebpf-kprobe-example
+    SRCDIR: /home/ubuntu/tcptracer-bpf
     PATH: $PATH:$HOME/.local/bin
 
 dependencies:
   override:
     - |
-      cd $SRCDIR && ./build-kernel-builder.sh && ./build-user-builder.sh && ./build-user-env.sh
-      docker tag kinvolk/ebpf-kprobe-example:latest kinvolk/ebpf-kprobe-example:$(./tools/image-tag)
+      cd $SRCDIR && make fedora-24 && make trace-output-user && make user-env
+      docker tag kinvolk/tcptracer-bpf:latest kinvolk/tcptracer-bpf:$(./tools/image-tag)
 
 test:
   override:
@@ -30,11 +30,11 @@ deployment:
         test -z "${DOCKER_USER}" || (
           docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS &&
           (test "${DOCKER_ORGANIZATION:-$DOCKER_USER}" == "kinvolk" || (
-            docker tag kinvolk/ebpf-kprobe-example:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:latest &&
-            docker tag kinvolk/ebpf-kprobe-example:$(./tools/image-tag) ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:$(./tools/image-tag)
+            docker tag kinvolk/tcptracer-bpf:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:latest &&
+            docker tag kinvolk/tcptracer-bpf:$(./tools/image-tag) ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:$(./tools/image-tag)
           )) &&
-          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example &&
-          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:$(./tools/image-tag)
+          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf &&
+          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:$(./tools/image-tag)
         )
   hub-dev:
     branch: /^((?!master).)*$/  # not the master branch
@@ -42,6 +42,6 @@ deployment:
       - >
         test -z "${DEPLOY_BRANCH}" || test -z "${DOCKER_USER}" || (
           docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS &&
-          docker tag kinvolk/ebpf-kprobe-example:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:${CIRCLE_BRANCH//\//-} &&
-          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/ebpf-kprobe-example:${CIRCLE_BRANCH//\//-}
+          docker tag kinvolk/tcptracer-bpf:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:${CIRCLE_BRANCH//\//-} &&
+          docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:${CIRCLE_BRANCH//\//-}
         )

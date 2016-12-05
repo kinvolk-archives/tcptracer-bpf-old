@@ -1,21 +1,22 @@
-KERNEL_HEADERS=/lib/modules/$(shell uname -r)/build
+include defaults.mk
 
-all: trace_output_user trace_output_kern.o
+UID=$(shell id -u)
+PWD=$(shell pwd)
 
-trace_output_user: trace_output_user.c bpf_load.c libbpf.c bpf_load.h
-	gcc -Wall -Wno-unused-variable \
-		-o $@ trace_output_user.c bpf_load.c libbpf.c \
-		-lelf
+.DEFAULT_GOAL:=do-nothing
+do-nothing:
+	@echo No target given, doing nothing by default
 
-trace_output_kern.o: trace_output_kern.c
-	clang -D__KERNEL__ -D__ASM_SYSREG_H \
-		-Wno-unused-value -Wno-pointer-sign -Wno-compare-distinct-pointer-types \
-		-O2 -emit-llvm -c $< \
-		-I $(KERNEL_HEADERS)/arch/x86/include \
-		-I $(KERNEL_HEADERS)/arch/x86/include/generated \
-		-I $(KERNEL_HEADERS)/include \
-		-I $(KERNEL_HEADERS)/include/generated/uapi \
-		-o - | llc -march=bpf -filetype=obj -o $@
+user-env:
+	@sudo docker build -t kinvolk/tcptracer-bpf -f Dockerfile.user-env .
 
-clean:
-	/bin/rm -f trace_output_user trace_output_kern.o
+trace-output-user:
+	sudo docker build -t kinvolk/ebpf-user-builder -f Dockerfile.user-builder .
+	sudo docker run --rm -e DEBUG=$(DEBUG) \
+	  -v $(PWD):/src:ro \
+	  -v $(PWD):/dist/ kinvolk/ebpf-user-builder \
+	  gcc -Wall -Wno-unused-variable -o /dist/trace_output_user trace_output_user.c bpf_load.c libbpf.c -lelf
+	sudo chown $(UID):$(UID) trace_output_user
+
+%:
+	make -f environments/$@.mk build
