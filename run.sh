@@ -7,4 +7,4 @@ fi
 sudo docker run --rm -e DEBUG=${DEBUG:-} -ti \
   --privileged --net=host --pid=host \
   -v /sys/kernel/debug:/sys/kernel/debug \
-  kinvolk/ebpf-kprobe-example "$@"
+  kinvolk/tcptracer-bpf "$@"
