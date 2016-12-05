@@ -10,6 +10,9 @@
 #include <net/net_namespace.h>
 
 struct tcp_event_v4_t {
+	/* timestamp must be the first field, the sorting depends on it */
+	u64 timestamp;
+	u64 cpu;
 	char ev_type[12];
 	u32 pid;
 	char comm[TASK_COMM_LEN];
@@ -18,11 +21,12 @@ struct tcp_event_v4_t {
 	u16 sport;
 	u16 dport;
 	u32 netns;
-	u64 cpu;
-	u64 ts;
 };
 
 struct tcp_event_v6_t {
+	/* timestamp must be the first field, the sorting depends on it */
+	u64 timestamp;
+	u64 cpu;
 	char ev_type[12];
 	u32 pid;
 	char comm[TASK_COMM_LEN];
@@ -34,8 +38,6 @@ struct tcp_event_v6_t {
 	u16 sport;
 	u16 dport;
 	u32 netns;
-	u64 cpu;
-	u64 ts;
 };
 
 struct bpf_map_def SEC("maps") tcp_event_v4 = {
@@ -121,6 +123,8 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 	// output
 	struct tcp_event_v4_t evt = {
+		.timestamp = bpf_ktime_get_ns(),
+		.cpu = bpf_get_smp_processor_id(),
 		.ev_type = "connect",
 		.pid = pid >> 32,
 		.saddr = saddr,
@@ -128,8 +132,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		.sport = ntohs(sport),
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
-		.cpu = bpf_get_smp_processor_id(),
-		.ts = bpf_ktime_get_ns(),
 	};
 
 	bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
@@ -215,6 +217,8 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 
 	// output
 	struct tcp_event_v6_t evt = {
+		.timestamp = bpf_ktime_get_ns(),
+		.cpu = bpf_get_smp_processor_id(),
 		.ev_type = "connect",
 		.pid = pid >> 32,
 		.saddr_h = saddr_h,
@@ -224,8 +228,6 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		.sport = ntohs(sport),
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
-		.cpu = bpf_get_smp_processor_id(),
-		.ts = bpf_ktime_get_ns(),
 	};
 
 	bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
@@ -268,6 +270,8 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		bpf_probe_read(&daddr, sizeof(daddr), &sk->__sk_common.skc_daddr);
 		// output
 		struct tcp_event_v4_t evt = {
+			.timestamp = bpf_ktime_get_ns(),
+			.cpu = bpf_get_smp_processor_id(),
 			.ev_type = "close",
 			.pid = pid >> 32,
 			.saddr = saddr,
@@ -275,8 +279,6 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
-			.cpu = bpf_get_smp_processor_id(),
-			.ts = bpf_ktime_get_ns(),
 		};
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is 0.0.0.0 or port is 0
@@ -291,6 +293,8 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		bpf_probe_read(&daddr_l, sizeof(daddr_l), &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
 		// output
 		struct tcp_event_v6_t evt = {
+			.timestamp = bpf_ktime_get_ns(),
+			.cpu = bpf_get_smp_processor_id(),
 			.ev_type = "close",
 			.pid = pid >> 32,
 			.saddr_h = saddr_h,
@@ -300,8 +304,6 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
-			.cpu = bpf_get_smp_processor_id(),
-			.ts = bpf_ktime_get_ns(),
 		};
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is :: or port is 0
@@ -350,10 +352,10 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 #endif
 	if (family == AF_INET) {
 		struct tcp_event_v4_t evt = {
+			.timestamp = bpf_ktime_get_ns(),
+			.cpu = bpf_get_smp_processor_id(),
 			.ev_type = "accept",
 			.netns = net_ns_inum,
-			.cpu = bpf_get_smp_processor_id(),
-			.ts = bpf_ktime_get_ns(),
 		};
 		evt.pid = pid >> 32;
 		bpf_probe_read(&evt.saddr, sizeof(u32),
@@ -369,10 +371,10 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		}
 	} else if (family == AF_INET6) {
 		struct tcp_event_v6_t evt = {
+			.timestamp = bpf_ktime_get_ns(),
+			.cpu = bpf_get_smp_processor_id(),
 			.ev_type = "accept",
 			.netns = net_ns_inum,
-			.cpu = bpf_get_smp_processor_id(),
-			.ts = bpf_ktime_get_ns(),
 		};
 		evt.pid = pid >> 32;
 		bpf_probe_read(&evt.saddr_h, sizeof(evt.saddr_h), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
