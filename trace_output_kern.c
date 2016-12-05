@@ -9,11 +9,15 @@
 #include <net/inet_sock.h>
 #include <net/net_namespace.h>
 
+#define TCP_EVENT_TYPE_CONNECT 1
+#define TCP_EVENT_TYPE_ACCEPT  2
+#define TCP_EVENT_TYPE_CLOSE   3
+
 struct tcp_event_v4_t {
 	/* timestamp must be the first field, the sorting depends on it */
 	u64 timestamp;
 	u64 cpu;
-	char ev_type[12];
+	u32 ev_type;
 	u32 pid;
 	char comm[TASK_COMM_LEN];
 	u32 saddr;
@@ -27,7 +31,7 @@ struct tcp_event_v6_t {
 	/* timestamp must be the first field, the sorting depends on it */
 	u64 timestamp;
 	u64 cpu;
-	char ev_type[12];
+	u32 ev_type;
 	u32 pid;
 	char comm[TASK_COMM_LEN];
 	/* Using the type unsigned __int128 generates an error in the ebpf verifier */
@@ -125,7 +129,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	struct tcp_event_v4_t evt = {
 		.timestamp = bpf_ktime_get_ns(),
 		.cpu = bpf_get_smp_processor_id(),
-		.ev_type = "connect",
+		.ev_type = TCP_EVENT_TYPE_CONNECT,
 		.pid = pid >> 32,
 		.saddr = saddr,
 		.daddr = daddr,
@@ -219,7 +223,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	struct tcp_event_v6_t evt = {
 		.timestamp = bpf_ktime_get_ns(),
 		.cpu = bpf_get_smp_processor_id(),
-		.ev_type = "connect",
+		.ev_type = TCP_EVENT_TYPE_CONNECT,
 		.pid = pid >> 32,
 		.saddr_h = saddr_h,
 		.saddr_l = saddr_l,
@@ -272,7 +276,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		struct tcp_event_v4_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
 			.cpu = bpf_get_smp_processor_id(),
-			.ev_type = "close",
+			.ev_type = TCP_EVENT_TYPE_CLOSE,
 			.pid = pid >> 32,
 			.saddr = saddr,
 			.daddr = daddr,
@@ -295,7 +299,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		struct tcp_event_v6_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
 			.cpu = bpf_get_smp_processor_id(),
-			.ev_type = "close",
+			.ev_type = TCP_EVENT_TYPE_CLOSE,
 			.pid = pid >> 32,
 			.saddr_h = saddr_h,
 			.saddr_l = saddr_l,
@@ -356,7 +360,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		struct tcp_event_v4_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
 			.cpu = bpf_get_smp_processor_id(),
-			.ev_type = "accept",
+			.ev_type = TCP_EVENT_TYPE_ACCEPT,
 			.netns = net_ns_inum,
 		};
 		evt.pid = pid >> 32;
@@ -375,7 +379,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		struct tcp_event_v6_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
 			.cpu = bpf_get_smp_processor_id(),
-			.ev_type = "accept",
+			.ev_type = TCP_EVENT_TYPE_ACCEPT,
 			.netns = net_ns_inum,
 		};
 		evt.pid = pid >> 32;
