@@ -40,28 +40,28 @@ struct tcp_event_v6_t {
 	u32 netns;
 };
 
-struct bpf_map_def SEC("maps") tcp_event_v4 = {
+struct bpf_map_def SEC("maps/tcp_event_v4") tcp_event_v4 = {
 	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY,
 	.key_size = sizeof(int),
 	.value_size = sizeof(__u32),
 	.max_entries = 16,
 };
 
-struct bpf_map_def SEC("maps") tcp_event_v6 = {
+struct bpf_map_def SEC("maps/tcp_event_v6") tcp_event_v6 = {
 	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY,
 	.key_size = sizeof(int),
 	.value_size = sizeof(__u32),
 	.max_entries = 16,
 };
 
-struct bpf_map_def SEC("maps") connectsock_v4 = {
+struct bpf_map_def SEC("maps/connectsock_v4") connectsock_v4 = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u64),
 	.value_size = sizeof(void *),
 	.max_entries = 128,
 };
 
-struct bpf_map_def SEC("maps") connectsock_v6 = {
+struct bpf_map_def SEC("maps/connectsock_v6") connectsock_v6 = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u64),
 	.value_size = sizeof(void *),
