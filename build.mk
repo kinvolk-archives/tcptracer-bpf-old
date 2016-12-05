@@ -8,6 +8,6 @@ build-ebpf-object:
 	sudo docker run --rm -e DEBUG=$(DEBUG) \
 		-e DISTRO=$(DISTRO) \
 		-v $(PWD):/src:ro \
-		-v $(PWD)/ebpf/$(DISTRO):/dist/ kinvolk/ebpf-kernel-$(DISTRO)-builder \
+		-v $(PWD)/ebpf:/dist/ kinvolk/ebpf-kernel-$(DISTRO)-builder \
 		make -f ebpf.mk build
 	sudo chown -R $(UID):$(UID) ebpf

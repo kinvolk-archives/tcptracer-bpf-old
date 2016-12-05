@@ -9,3 +9,6 @@ linux-version:
 
 linux-headers:
 	@dpkg -l | awk '/linux-headers-.*-(common|amd64) .*/{print "/usr/src/"$$2}'
+
+distro-id:
+	@grep ^ID= /etc/os-release  | awk -F= '{print $$2}'
