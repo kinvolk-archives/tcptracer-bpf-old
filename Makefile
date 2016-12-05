@@ -8,7 +8,7 @@ do-nothing:
 	@echo No target given, doing nothing by default
 
 user-env:
-	@sudo docker build -t kinvolk/ebpf-kprobe-example -f Dockerfile.user-env .
+	@sudo docker build -t kinvolk/tcptracer-bpf -f Dockerfile.user-env .
 
 trace-output-user:
 	sudo docker build -t kinvolk/ebpf-user-builder -f Dockerfile.user-builder .
