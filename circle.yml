@@ -14,7 +14,7 @@ machine:
 dependencies:
   override:
     - |
-      cd $SRCDIR && make fedora-24 && make trace-output-user && make user-env
+      cd $SRCDIR && make fedora-24 && make arch && make debian-testing && ./tools/export-elfs-into-container
       docker tag kinvolk/tcptracer-bpf:latest kinvolk/tcptracer-bpf:$(./tools/image-tag)
 
 test:
