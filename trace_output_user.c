@@ -25,6 +25,38 @@
 #include "libbpf.h"
 #include "bpf_load.h"
 
+/* TODO @alepuccetti: find out how to include this macro */
+#define TASK_COMM_LEN 16
+
+struct tcp_event_v4_t {
+	__u64 timestamp;
+	__u64 cpu;
+	char ev_type[12];
+	__u32 pid;
+	char comm[TASK_COMM_LEN];
+	__u32 saddr;
+	__u32 daddr;
+	__u16 sport;
+	__u16 dport;
+	__u32 netns;
+};
+
+struct tcp_event_v6_t {
+	__u64 timestamp;
+	__u64 cpu;
+	char ev_type[12];
+	__u32 pid;
+	char comm[TASK_COMM_LEN];
+	/* Using the type unsigned __int128 generates an error in the ebpf verifier */
+	__u64 saddr_h;
+	__u64 saddr_l;
+	__u64 daddr_h;
+	__u64 daddr_l;
+	__u16 sport;
+	__u16 dport;
+	__u32 netns;
+};
+
 static int pmu_fd;
 
 int page_size;
@@ -100,7 +132,7 @@ void perf_event_read(print_fn fn)
 		}
 
 		if (e->header.type == PERF_RECORD_SAMPLE) {
-			fn(e->data, e->size);
+			fn(e->data, e->size - sizeof(struct perf_event_header));
 		} else if (e->header.type == PERF_RECORD_LOST) {
 			struct {
 				struct perf_event_header header;
@@ -131,22 +163,18 @@ static __u64 start_time;
 static void print_bpf_output(void *data, int size)
 {
 	static __u64 cnt;
-	struct {
-		char ev_type[12];
-		__u32 pid;
-#define TASK_COMM_LEN 16
-		char comm[TASK_COMM_LEN];
-		__u32 saddr;
-		__u32 daddr;
-		__u16 sport;
-		__u16 dport;
-		__u32 netns;
-	} *e = data;
 
-
-	cnt++;
-
-	printf("tcp_v4_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
+	if (size - 4 == sizeof(struct tcp_event_v4_t)) {
+		cnt++;
+		struct tcp_event_v4_t* e = data;
+		printf("tcp_v4_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
+	} else if (size - 4 == sizeof(struct tcp_event_v6_t)) {
+		cnt++;
+		struct tcp_event_v6_t* e = data;
+		printf("tcp_v6_connect '%s' pid %d dport %d\n", e->comm, e->pid, e->dport);
+	} else {
+		printf("ERROR: struct not recognised, size: %d\n", size);
+	}
 }
 
 static void test_bpf_perf_event(void)
@@ -162,6 +190,7 @@ static void test_bpf_perf_event(void)
 
 	assert(pmu_fd >= 0);
 	assert(bpf_update_elem(map_fd[0], &key, &pmu_fd, BPF_ANY) == 0);
+	assert(bpf_update_elem(map_fd[1], &key, &pmu_fd, BPF_ANY) == 0);
 	ioctl(pmu_fd, PERF_EVENT_IOC_ENABLE, 0);
 }
 

@@ -15,6 +15,7 @@
 #include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <poll.h>
 #include <ctype.h>
 #include "libbpf.h"
@@ -78,6 +79,31 @@ static int load_and_attach(const char *event, struct bpf_insn *prog, int size)
 	}
 
 	fd = bpf_prog_load(prog_type, prog, size, license, kern_version);
+	if (fd < 0 && errno == EPERM) {
+		/*
+		 * When EPERM is returned, two reasons are possible:
+		 * 1. user has no permissions for bpf()
+		 * 2. user has insufficent rlimit for locked memory
+		 * Unfortunately, there is no api to inspect the current usage of locked
+		 * mem for the user, so an accurate calculation of how much memory to lock
+		 * for this new program is difficult to calculate. As a hack, bump the limit
+		 * to unlimited. If program load fails again, return the error.
+		 */
+		printf("bpf_prog_load() err=%d\n%s\nset rlimit to RLIM_INFINITY and try again\n", errno, bpf_log_buf);
+		struct rlimit rl = {};
+		if (getrlimit(RLIMIT_MEMLOCK, &rl) == 0) {
+			rl.rlim_max = RLIM_INFINITY;
+			rl.rlim_cur = rl.rlim_max;
+			if (setrlimit(RLIMIT_MEMLOCK, &rl) == 0) {
+				fd = bpf_prog_load(prog_type, prog, size, license, kern_version);
+			}
+			else {
+				printf("setrlimit() failed with errno=%d\n", errno);
+				return -1;
+			}
+		}
+	}
+	/* This checks the second try as well as the case fd < 0 && errno != EPERM */
 	if (fd < 0) {
 		printf("bpf_prog_load() err=%d\n%s", errno, bpf_log_buf);
 		return -1;
@@ -339,7 +365,7 @@ int load_bpf_file(char *path)
 			    memcmp(shname_prog, "socket", 6) == 0){
 				ret = load_and_attach(shname_prog, insns, data_prog->d_size);
 				if (ret < 0){
-					printf("ERROR load_and_attach(shname_prog, ... \n");
+					printf("ERROR load_and_attach: shname_prog: %s\n", shname_prog);
 					return ret;
 				}
 			}
@@ -363,7 +389,7 @@ int load_bpf_file(char *path)
 		    memcmp(shname, "socket", 6) == 0){
 			ret = load_and_attach(shname, data->d_buf, data->d_size);
 			if (ret < 0) {
-				printf("ERROR load_and_attach(shname, ... \n");
+				printf("ERROR load_and_attach: shname: %s\n",shname);
 				return ret;
 			}
 		}
