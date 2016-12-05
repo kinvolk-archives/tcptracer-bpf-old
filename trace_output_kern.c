@@ -73,8 +73,8 @@ int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 {
 	struct sock *sk;
 	u64 pid = bpf_get_current_pid_tgid();
+	/* TODO: remove printks */
 	char called_msg[] = "kprobe/tcp_v4_connect called\n";
-
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
@@ -90,8 +90,8 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	int ret = PT_REGS_RC(ctx);
 	u64 pid = bpf_get_current_pid_tgid();
 	struct sock **skpp;
+	/* TODO: remove printks */
 	char called_msg[] = "kretprobe/tcp_v4_connect called\n";
-
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	skpp = bpf_map_lookup_elem(&connectsock_v4, &pid);
@@ -151,8 +151,8 @@ int kprobe__tcp_v6_connect(struct pt_regs *ctx)
 {
 	struct sock *sk;
 	u64 pid = bpf_get_current_pid_tgid();
+	/* TODO: remove printks */
 	char called_msg[] = "kprobe/tcp_v6_connect called\n";
-
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
@@ -168,8 +168,8 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	int ret = PT_REGS_RC(ctx);
 	u64 pid = bpf_get_current_pid_tgid();
 	struct sock **skpp;
+	/* TODO: remove printks */
 	char called_msg[] = "kretprobe/tcp_v6_connect called\n";
-
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	skpp = bpf_map_lookup_elem(&connectsock_v6, &pid);
@@ -247,8 +247,8 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 {
 	struct sock *sk;
 	u64 pid = bpf_get_current_pid_tgid();
+	/* TODO: remove printks */
 	char called_msg[] = "kprobe/tcp_close called\n";
-
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
@@ -311,6 +311,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
 	} else {
+		/* TODO: remove printks */
 		char msg[] = "kretprobe/tcp_close: socket family not supported\n";
 		bpf_trace_printk(msg, sizeof(msg));
 		return 0;
@@ -321,6 +322,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 SEC("kretprobe/inet_csk_accept")
 int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 {
+	/* TODO: remove printks */
 	char called_msg[] = "kretprobe/inet_csk_accept called\n";
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
@@ -389,6 +391,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
 	} else {
+		/* TODO: remove printks */
 		char msg[] = "kretprobe/tcp_close: socket family not supported\n";
 		bpf_trace_printk(msg, sizeof(msg));
 	}
