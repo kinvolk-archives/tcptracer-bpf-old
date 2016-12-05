@@ -29,6 +29,8 @@
 #define TASK_COMM_LEN 16
 
 struct tcp_event_v4_t {
+	__u64 timestamp;
+	__u64 cpu;
 	char ev_type[12];
 	__u32 pid;
 	char comm[TASK_COMM_LEN];
@@ -40,6 +42,8 @@ struct tcp_event_v4_t {
 };
 
 struct tcp_event_v6_t {
+	__u64 timestamp;
+	__u64 cpu;
 	char ev_type[12];
 	__u32 pid;
 	char comm[TASK_COMM_LEN];
