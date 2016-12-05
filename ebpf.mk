@@ -1,6 +1,7 @@
 LINUX_VERSION=$(shell make -f environments/$(DISTRO).mk linux-version)
 LINUX_HEADERS=$(shell make -f environments/$(DISTRO).mk linux-headers)
-DEST_DIR=/dist/$(shell uname -m)/$(LINUX_VERSION)
+DISTRO_ID=$(shell make -f environments/$(DISTRO).mk distro-id)
+DEST_DIR=/dist/$(DISTRO_ID)/$(shell uname -m)/$(LINUX_VERSION)
 
 build:
 	@mkdir -p "$(DEST_DIR)"
