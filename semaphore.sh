@@ -1,6 +1,9 @@
 #!/bin/bash
 set -xe
 
+df -h
+exit 0
+
 make fedora-24
 make arch
 make debian-testing
