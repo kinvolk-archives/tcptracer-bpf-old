@@ -4,6 +4,7 @@ set -xe
 make fedora-24
 make arch
 make debian-testing
+make coreos
 
 ./tools/export-elfs-into-container
 
