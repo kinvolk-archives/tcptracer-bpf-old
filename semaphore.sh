@@ -21,7 +21,7 @@ if [ "$BRANCH_NAME" == "master" ] ; then
   test -z "${DOCKER_USER}" || (
     docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS &&
     docker tag kinvolk/tcptracer-bpf:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-latest &&
-    docker tag kinvolk/tcptracer-bpf:$(./tools/image-tag) ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-$(./tools/image-tag) &&
+    docker tag kinvolk/tcptracer-bpf:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-$(./tools/image-tag) &&
     docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-latest &&
     docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-$(./tools/image-tag)
   )
