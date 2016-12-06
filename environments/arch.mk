@@ -11,4 +11,4 @@ linux-headers:
 	@pacman -Q linux-headers | awk '{print "/usr/lib/modules/"$$2"-ARCH/build"}'
 
 distro-id:
-	@grep ^ID= /etc/os-release  | awk -F= '{print $$2}'
+	@grep ^ID= /usr/lib/os-release  | awk -F= '{print $$2}'
