@@ -2,7 +2,7 @@ include build.mk
 
 DISTRO=debian-testing
 
-build: build-docker-image build-ebpf-object
+build: build-docker-image build-ebpf-object delete-docker-image
 
 linux-version:
 	@dpkg -l | perl -n -e'/linux-headers-(.*-amd64) .*/ && print $$1'
