@@ -14,3 +14,6 @@ build-ebpf-object:
 		-v $(PWD)/ebpf:/dist/ $(DOCKER_IMAGE) \
 		make -f ebpf.mk build
 	sudo chown -R $(UID):$(UID) ebpf
+
+delete-docker-image:
+	sudo docker rmi $(DOCKER_IMAGE)

@@ -2,7 +2,7 @@ include build.mk
 
 DISTRO=fedora-24
 
-build: build-docker-image build-ebpf-object
+build: build-docker-image build-ebpf-object delete-docker-image
 
 linux-version:
 	@dnf list kernel-devel | awk '/^kernel-devel\..*/{print $$2".x86_64"}'
