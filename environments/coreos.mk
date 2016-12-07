@@ -9,7 +9,7 @@ DIR:=$(shell mktemp -d /tmp/tcptracer-bpf-coreos-XXXXXXXX)
 RELEASE?=current
 RELEASE_CHANNEL?=alpha
 
-build: fetch-image mount-image extract-header umount-image build-docker-image build-ebpf-object cleanup
+build: fetch-image mount-image extract-header umount-image build-docker-image build-ebpf-object delete-docker-image cleanup
 
 fetch-image:
 	@echo $(DIR)

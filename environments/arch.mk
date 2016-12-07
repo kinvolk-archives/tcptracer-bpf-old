@@ -2,7 +2,7 @@ include build.mk
 
 DISTRO=arch
 
-build: build-docker-image build-ebpf-object
+build: build-docker-image build-ebpf-object delete-docker-image
 
 linux-version:
 	@pacman -Q linux-headers | awk '{print $$2"-ARCH"}'
