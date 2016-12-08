@@ -16,4 +16,4 @@ build-ebpf-object:
 	sudo chown -R $(UID):$(UID) ebpf
 
 delete-docker-image:
-	sudo docker rmi $(DOCKER_IMAGE)
+	@if test "$$CI" = "true"; then sudo docker rmi $(DOCKER_IMAGE); else echo "not in CI: not removing docker images"; fi
