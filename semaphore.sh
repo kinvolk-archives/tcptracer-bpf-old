@@ -20,9 +20,6 @@ fi
 
 if [ "$BRANCH_NAME" == "master" ] ; then
   test -z "${DOCKER_USER}" || (
-    set +x &&
-    docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS &&
-    set -x &&
     docker tag kinvolk/tcptracer-bpf:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-latest &&
     docker tag kinvolk/tcptracer-bpf:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-$(./tools/image-tag) &&
     docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-latest &&
@@ -30,9 +27,6 @@ if [ "$BRANCH_NAME" == "master" ] ; then
   )
 else
   test -z "${DEPLOY_BRANCH}" || test -z "${DOCKER_USER}" || (
-    set +x &&
-    docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS &&
-    set -x &&
     docker tag kinvolk/tcptracer-bpf:latest ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-${BRANCH_NAME//\//-} &&
     docker push ${DOCKER_ORGANIZATION:-$DOCKER_USER}/tcptracer-bpf:semaphore-${BRANCH_NAME//\//-}
   )
