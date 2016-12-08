@@ -72,14 +72,48 @@ struct bpf_map_def SEC("maps/connectsock_v6") connectsock_v6 = {
 	.max_entries = 128,
 };
 
+#define TCPTRACER_STATUS_UNINITIALIZED 0
+#define TCPTRACER_STATUS_CHECKING      1
+#define TCPTRACER_STATUS_CHECKED       2
+#define TCPTRACER_STATUS_READY         3
+struct tcptracer_status_t {
+	u64 status;
+
+	/* checking */
+	u64 pid_tgid;
+	u64 what;
+	u64 offset;
+
+	u32 saddr;
+	u32 daddr;
+	u16 sport;
+	u16 dport;
+	u32 netns;
+}
+
+struct bpf_map_def SEC("maps/tcptracer_status") tcptracer_status = {
+	.type = BPF_MAP_TYPE_HASH,
+	.key_size = sizeof(__u64),
+	.value_size = sizeof(struct tcptracer_status_t),
+	.max_entries = 1,
+};
+
 SEC("kprobe/tcp_v4_connect")
 int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 {
 	struct sock *sk;
 	u64 pid = bpf_get_current_pid_tgid();
+	u64 zero = 0;
+	struct tcptracer_status_t *status;
+
 	/* TODO: remove printks */
 	char called_msg[] = "kprobe/tcp_v4_connect called\n";
 	bpf_trace_printk(called_msg, sizeof(called_msg));
+
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || *status == TCPTRACER_STATUS_UNINITIALIZED) {
+		return 0;
+	}
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
@@ -94,6 +128,9 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	int ret = PT_REGS_RC(ctx);
 	u64 pid = bpf_get_current_pid_tgid();
 	struct sock **skpp;
+	u64 zero = 0;
+	struct tcptracer_status_t *status;
+
 	/* TODO: remove printks */
 	char called_msg[] = "kretprobe/tcp_v4_connect called\n";
 	bpf_trace_printk(called_msg, sizeof(called_msg));
@@ -102,13 +139,35 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	if (skpp == 0) {
 		return 0;	// missed entry
 	}
+	bpf_map_delete_elem(&connectsock_v4, &pid);
 
 	if (ret != 0) {
 		// failed to send SYNC packet, may not have populated
 		// socket __sk_common.{skc_rcv_saddr, ...}
-		bpf_map_delete_elem(&connectsock_v4, &pid);
 		return 0;
 	}
+
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || *status == TCPTRACER_STATUS_UNINITIALIZED) {
+		return 0;
+	}
+	switch (*status) {
+		case TCPTRACER_STATUS_UNINITIALIZED:
+			return 0;
+		case TCPTRACER_STATUS_CHECKING:
+			if (status->pid_tgid != pid)
+				return 0;
+
+			return 0;
+		case TCPTRACER_STATUS_CHECKED:
+			return 0;
+		case TCPTRACER_STATUS_READY:
+			// continue
+			break;
+		default:
+			return 0;
+	}
+
 
 	// pull in details
 	struct sock *skp = *skpp;
@@ -144,8 +203,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
 		bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 	}
-
-	bpf_map_delete_elem(&connectsock_v4, &pid);
 
 	return 0;
 }
