@@ -89,7 +89,7 @@ struct tcptracer_status_t {
 	u16 sport;
 	u16 dport;
 	u32 netns;
-}
+};
 
 struct bpf_map_def SEC("maps/tcptracer_status") tcptracer_status = {
 	.type = BPF_MAP_TYPE_HASH,
@@ -111,7 +111,7 @@ int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
-	if (status == NULL || *status == TCPTRACER_STATUS_UNINITIALIZED) {
+	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
 		return 0;
 	}
 
@@ -148,15 +148,17 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	}
 
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
-	if (status == NULL || *status == TCPTRACER_STATUS_UNINITIALIZED) {
+	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
 		return 0;
 	}
-	switch (*status) {
+	switch (status->status) {
 		case TCPTRACER_STATUS_UNINITIALIZED:
 			return 0;
 		case TCPTRACER_STATUS_CHECKING:
 			if (status->pid_tgid != pid)
 				return 0;
+
+			// code here
 
 			return 0;
 		case TCPTRACER_STATUS_CHECKED:
