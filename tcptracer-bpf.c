@@ -106,14 +106,12 @@ int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 	u64 zero = 0;
 	struct tcptracer_status_t *status;
 
-	/* TODO: remove printks */
-	char called_msg[] = "kprobe/tcp_v4_connect called\n";
-	bpf_trace_printk(called_msg, sizeof(called_msg));
-
-	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
-	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
+	if (status->status == TCPTRACER_STATUS_UNINITIALIZED) {
 		return 0;
 	}
+
+	char called_msg[] = "kprobe/tcp_v4_connect called\n";
+	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
@@ -131,9 +129,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	u64 zero = 0;
 	struct tcptracer_status_t *status;
 
-	/* TODO: remove printks */
-	char called_msg[] = "kretprobe/tcp_v4_connect called\n";
-	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	skpp = bpf_map_lookup_elem(&connectsock_v4, &pid);
 	if (skpp == 0) {
@@ -147,10 +142,21 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		return 0;
 	}
 
+	/* TODO: remove printks */
+	char called_msg[] = "kretprobe/tcp_v4_connect called\n";
+	bpf_trace_printk(called_msg, sizeof(called_msg));
+
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
 	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
 		return 0;
 	}
+
+	/*
+	char offset_msg[] = "real_offset = %llu\n";
+	u64 real_offset = (u64)(&((struct sock *)NULL)->__sk_common.skc_rcv_saddr);
+	bpf_trace_printk(offset_msg, sizeof(offset_msg), real_offset);
+	*/
+
 	switch (status->status) {
 		case TCPTRACER_STATUS_UNINITIALIZED:
 			return 0;
@@ -158,7 +164,41 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			if (status->pid_tgid != pid)
 				return 0;
 
-			// code here
+			u32 possible_saddr = 0;
+
+			struct sock *skp = *skpp;
+			bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset);
+			char called_msg[] = "offset = %llu, possible_saddr = %llx, saddr = %llx\n";
+			bpf_trace_printk(called_msg, sizeof(called_msg), status->offset, possible_saddr, status->saddr);
+
+			// TODO move this to userspace
+			if (possible_saddr == status->saddr) {
+				struct tcptracer_status_t updated_status = {
+				    .status = TCPTRACER_STATUS_CHECKED,
+				    .pid_tgid = status->pid_tgid ,
+				    .what = status->what,
+				    .offset = status->offset,
+				    .saddr = status->saddr ,
+				    .daddr = status->daddr ,
+				    .sport = status->sport ,
+				    .dport= status->dport ,
+				    .netns= status->netns ,
+				};
+				bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
+			} else {
+				struct tcptracer_status_t updated_status = {
+				    .status = status->status ,
+				    .pid_tgid = status->pid_tgid ,
+				    .what = status->what,
+				    .offset = status->offset + 1,
+				    .saddr = status->saddr ,
+				    .daddr = status->daddr ,
+				    .sport = status->sport ,
+				    .dport= status->dport ,
+				    .netns= status->netns ,
+				};
+				bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
+			}
 
 			return 0;
 		case TCPTRACER_STATUS_CHECKED:
