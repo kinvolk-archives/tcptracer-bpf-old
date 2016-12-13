@@ -27,23 +27,6 @@ struct tcp_event_v4_t {
 	u32 netns;
 };
 
-struct tcp_event_v6_t {
-	/* timestamp must be the first field, the sorting depends on it */
-	u64 timestamp;
-	u64 cpu;
-	u32 ev_type;
-	u32 pid;
-	char comm[TASK_COMM_LEN];
-	/* Using the type unsigned __int128 generates an error in the ebpf verifier */
-	u64 saddr_h;
-	u64 saddr_l;
-	u64 daddr_h;
-	u64 daddr_l;
-	u16 sport;
-	u16 dport;
-	u32 netns;
-};
-
 struct bpf_map_def SEC("maps/tcp_event_v4") tcp_event_v4 = {
 	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY,
 	.key_size = sizeof(int),
@@ -51,21 +34,7 @@ struct bpf_map_def SEC("maps/tcp_event_v4") tcp_event_v4 = {
 	.max_entries = 16,
 };
 
-struct bpf_map_def SEC("maps/tcp_event_v6") tcp_event_v6 = {
-	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY,
-	.key_size = sizeof(int),
-	.value_size = sizeof(__u32),
-	.max_entries = 16,
-};
-
 struct bpf_map_def SEC("maps/connectsock_v4") connectsock_v4 = {
-	.type = BPF_MAP_TYPE_HASH,
-	.key_size = sizeof(__u64),
-	.value_size = sizeof(void *),
-	.max_entries = 128,
-};
-
-struct bpf_map_def SEC("maps/connectsock_v6") connectsock_v6 = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u64),
 	.value_size = sizeof(void *),
@@ -396,37 +365,8 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
-	} else if (family == AF_INET6) {
-		u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
-		bpf_probe_read(&saddr_h, sizeof(saddr_h), &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		bpf_probe_read(&saddr_l, sizeof(saddr_l), &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&daddr_h, sizeof(daddr_h), &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		bpf_probe_read(&daddr_l, sizeof(daddr_l), &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
-		// output
-		struct tcp_event_v6_t evt = {
-			.timestamp = bpf_ktime_get_ns(),
-			.cpu = bpf_get_smp_processor_id(),
-			.ev_type = TCP_EVENT_TYPE_CLOSE,
-			.pid = pid >> 32,
-			.saddr_h = saddr_h,
-			.saddr_l = saddr_l,
-			.daddr_h = daddr_h,
-			.daddr_l = daddr_l,
-			.sport = ntohs(sport),
-			.dport = ntohs(dport),
-			.netns = net_ns_inum,
-		};
-		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
-		// do not send event if IP address is :: or port is 0
-		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-		}
-	} else {
-		/* TODO: remove printks */
-		char msg[] = "kretprobe/tcp_close: socket family not supported\n";
-		bpf_trace_printk(msg, sizeof(msg));
-		return 0;
-	}
+	} // else drop
+
 	return 0;
 }
 
@@ -482,31 +422,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 		}
-	} else if (family == AF_INET6) {
-		struct tcp_event_v6_t evt = {
-			.timestamp = bpf_ktime_get_ns(),
-			.cpu = bpf_get_smp_processor_id(),
-			.ev_type = TCP_EVENT_TYPE_ACCEPT,
-			.netns = net_ns_inum,
-		};
-		evt.pid = pid >> 32;
-		bpf_probe_read(&evt.saddr_h, sizeof(evt.saddr_h), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		bpf_probe_read(&evt.saddr_l, sizeof(evt.saddr_l), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&evt.daddr_h, sizeof(evt.daddr_h), &newsk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		bpf_probe_read(&evt.daddr_l, sizeof(evt.daddr_l), &newsk->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
-		evt.sport = lport;
-		evt.dport = ntohs(dport);
-		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
-		// do not send event if IP address is :: or port is 0
-		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-		}
-	} else {
-		/* TODO: remove printks */
-		char msg[] = "kretprobe/tcp_close: socket family not supported\n";
-		bpf_trace_printk(msg, sizeof(msg));
-	}
-	// else drop
+	} // else drop
 
 	return 0;
 }
