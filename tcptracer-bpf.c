@@ -117,6 +117,10 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		return 0;
 	}
 
+	/* TODO: remove printks */
+	char called_msg[] = "kretprobe/tcp_v4_connect called\n";
+	bpf_trace_printk(called_msg, sizeof(called_msg));
+
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
 	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
 		return 0;
@@ -216,12 +220,10 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
 
 	// Get network namespace id
-	possible_net_t *skc_net;
-
-	skc_net = NULL;
-	net_ns_inum = 0;
-	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
+	possible_net_t skc_net;
+	bpf_probe_read(&skc_net, sizeof(skc_net), ((char *)skp) + status->offset_netns);
+	// FIXME offset here?
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
 
 	// output
 	struct tcp_event_v4_t evt = {
@@ -253,6 +255,9 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	struct tcptracer_status_t *status;
 	u64 zero = 0;
 	u64 pid = bpf_get_current_pid_tgid();
+	/* TODO: remove printks */
+	char called_msg[] = "kprobe/tcp_close called\n";
+	bpf_trace_printk(called_msg, sizeof(called_msg));
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
@@ -311,6 +316,10 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 SEC("kretprobe/inet_csk_accept")
 int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 {
+	/* TODO: remove printks */
+	char called_msg[] = "kretprobe/inet_csk_accept called\n";
+	bpf_trace_printk(called_msg, sizeof(called_msg));
+
 	struct tcptracer_status_t *status;
 	u64 zero = 0;
 	struct sock *newsk = (struct sock *)PT_REGS_RC(ctx);
