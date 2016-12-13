@@ -86,6 +86,7 @@ struct tcptracer_status_t {
 	u64 offset_daddr;
 	u64 offset_sport;
 	u64 offset_dport;
+	u64 offset_netns;
 
 	u32 saddr;
 	u32 daddr;
@@ -98,7 +99,7 @@ struct bpf_map_def SEC("maps/tcptracer_status") tcptracer_status = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u64),
 	.value_size = sizeof(struct tcptracer_status_t),
-	.max_entries = 5,
+	.max_entries = 128,
 };
 
 SEC("kprobe/tcp_v4_connect")
@@ -132,7 +133,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	u64 zero = 0;
 	struct tcptracer_status_t *status;
 
-
 	skpp = bpf_map_lookup_elem(&connectsock_v4, &pid);
 	if (skpp == 0) {
 		return 0;	// missed entry
@@ -156,131 +156,59 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		return 0;
 	}
 
-	/*
-	char offset_msg[] = "real_offset = %llu\n";
-	u64 real_offset = (u64)(&((struct sock *)NULL)->__sk_common.skc_rcv_saddr);
-	bpf_trace_printk(offset_msg, sizeof(offset_msg), real_offset);
-	*/
-
 	switch (status->status) {
 		case TCPTRACER_STATUS_UNINITIALIZED:
 			return 0;
 		case TCPTRACER_STATUS_CHECKING:
-
-			if (0 == 1)
-			  break;
-			char what_msg0[] = "what BEFORE PID = %d\n";
-			bpf_trace_printk(what_msg0, sizeof(what_msg0), status->what);
-
-
 			if (status->pid_tgid != pid)
 				return 0;
 
-			char what_msg[] = "what = %d\n";
-			bpf_trace_printk(what_msg, sizeof(what_msg), status->what);
+			struct tcptracer_status_t updated_status = {
+			    .status = TCPTRACER_STATUS_CHECKED,
+			    .pid_tgid = status->pid_tgid,
+			    .what = status->what,
+			    .offset_saddr = status->offset_saddr,
+			    .offset_daddr = status->offset_daddr,
+			    .offset_sport = status->offset_sport,
+			    .offset_dport = status->offset_dport,
+			    .offset_netns = status->offset_netns,
+			    .saddr = status->saddr,
+			    .daddr = status->daddr,
+			    .sport = status->sport,
+			    .dport = status->dport,
+			    .netns = status->netns,
+			};
 
 			switch (status->what) {
 				u32 possible_saddr = 0;
 				u32 possible_daddr = 0;
 				u16 possible_sport = 0;
 				u16 possible_dport = 0;
+				possible_net_t possible_skc_net;
+				u32 possible_netns = 0;
 				case 0:
 					bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset_saddr);
-					char called_msg_saddr[] = "offset_saddr = %llu, possible_saddr = %llx, saddr = %llx\n";
-					bpf_trace_printk(called_msg_saddr, sizeof(called_msg_saddr), status->offset_saddr, possible_saddr, status->saddr);
-
-					// TODO *ugly* deduplicate this
-					struct tcptracer_status_t updated_status_saddr = {
-					    .status = TCPTRACER_STATUS_CHECKED,
-					    .pid_tgid = status->pid_tgid ,
-					    .what = status->what,
-					    .offset_saddr = status->offset_saddr,
-					    .offset_daddr = status->offset_daddr,
-					    .offset_sport = status->offset_sport,
-					    .offset_dport = status->offset_dport,
-					    .saddr = possible_saddr,
-					    .daddr = status->daddr,
-					    .sport = status->sport,
-					    .dport = status->dport,
-					    .netns = status->netns,
-					};
-					bpf_map_update_elem(&tcptracer_status, &zero, &updated_status_saddr, BPF_ANY);
+					updated_status.saddr = possible_saddr;
 					break;
 				case 1:
 					bpf_probe_read(&possible_daddr, sizeof(possible_daddr), ((char *)skp) + status->offset_daddr);
-					char called_msg_daddr[] = "offset_daddr = %llu, possible_daddr = %llx, daddr = %llx\n";
-					bpf_trace_printk(called_msg_daddr, sizeof(called_msg_daddr), status->offset_daddr, possible_daddr, status->daddr);
-
-					// TODO *ugly* deduplicate this
-					struct tcptracer_status_t updated_status_daddr = {
-					    .status = TCPTRACER_STATUS_CHECKED,
-					    .pid_tgid = status->pid_tgid ,
-					    .what = status->what,
-					    .offset_saddr = status->offset_saddr,
-					    .offset_daddr = status->offset_daddr,
-					    .offset_sport = status->offset_sport,
-					    .offset_dport = status->offset_dport,
-					    .saddr = status->saddr,
-					    .daddr = possible_daddr,
-					    .sport = status->sport,
-					    .dport = status->dport,
-					    .netns = status->netns,
-					};
-					bpf_map_update_elem(&tcptracer_status, &zero, &updated_status_daddr, BPF_ANY);
+					updated_status.daddr = possible_daddr;
 					break;
 				case 2:
 					bpf_probe_read(&possible_sport, sizeof(possible_sport), ((char *)skp) + status->offset_sport);
-					char called_msg_sport[] = "offset_sport = %llu, possible_sport = %llu, sport = %llu\n";
-					bpf_trace_printk(called_msg_sport, sizeof(called_msg_sport), status->offset_sport, possible_sport, status->sport);
-
-
-					// TODO *ugly* deduplicate this
-					struct tcptracer_status_t updated_status_sport = {
-					    .status = TCPTRACER_STATUS_CHECKED,
-					    .pid_tgid = status->pid_tgid ,
-					    .what = status->what,
-					    .offset_saddr = status->offset_saddr,
-					    .offset_daddr = status->offset_daddr,
-					    .offset_sport = status->offset_sport,
-					    .offset_dport = status->offset_dport,
-					    .saddr = status->saddr,
-					    .daddr = status->daddr,
-					    .sport = possible_sport,
-					    .dport = status->dport,
-					    .netns = status->netns,
-					};
-					bpf_map_update_elem(&tcptracer_status, &zero, &updated_status_sport, BPF_ANY);
-
-
+					updated_status.sport = possible_sport;
 					break;
 				case 3:
 					bpf_probe_read(&possible_dport, sizeof(possible_dport), ((char *)skp) + status->offset_dport);
-					char called_msg_dport[] = "offset_dport = %llu, possible_dport = %llu, dport = %llu\n";
-					bpf_trace_printk(called_msg_dport, sizeof(called_msg_dport), status->offset_dport, possible_dport, status->dport);
-
-
-					// TODO *ugly* deduplicate this
-					struct tcptracer_status_t updated_status_dport = {
-					    .status = TCPTRACER_STATUS_CHECKED,
-					    .pid_tgid = status->pid_tgid ,
-					    .what = status->what,
-					    .offset_saddr = status->offset_saddr,
-					    .offset_daddr = status->offset_daddr,
-					    .offset_sport = status->offset_sport,
-					    .offset_dport = status->offset_dport,
-					    .saddr = status->saddr,
-					    .daddr = status->daddr,
-					    .sport = status->sport,
-					    .dport = possible_dport,
-					    .netns= status->netns,
-					};
-					bpf_map_update_elem(&tcptracer_status, &zero, &updated_status_dport, BPF_ANY);
-
+					updated_status.dport = possible_dport;
 					break;
 				case 4:
-					// TODO
+					bpf_probe_read(&possible_skc_net, sizeof(possible_skc_net), ((char *)skp) + status->offset_netns);
+					bpf_probe_read(&possible_netns, sizeof(possible_netns), &possible_skc_net.net->ns.inum);
+					updated_status.netns = possible_netns;
 					break;
 			}
+			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
 
 			return 0;
 		case TCPTRACER_STATUS_CHECKED:
@@ -291,7 +219,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		default:
 			return 0;
 	}
-
 
 	// pull in details
 	struct ns_common *ns;
@@ -585,4 +512,4 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 }
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = LINUX_VERSION_CODE;
+__u32 _version SEC("version") = 264205;

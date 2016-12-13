@@ -2,14 +2,14 @@ include build.mk
 
 DISTRO=coreos
 
-DOCKER_FILE=Dockerfile.kernel-debian-testing-builder
+DOCKER_FILE=Dockerfile.kernel-fedora-24-builder
 
-DIR:=$(shell mktemp -d /tmp/tcptracer-bpf-coreos-XXXXXXXX)
+DIR:=/tmp/tcptracer-bpf-coreos-if9dwZk2/
 
 RELEASE?=current
 RELEASE_CHANNEL?=alpha
 
-build: fetch-image mount-image extract-header umount-image build-docker-image build-ebpf-object delete-docker-image cleanup
+build: mount-image extract-header umount-image build-docker-image build-ebpf-object delete-docker-image cleanup
 
 fetch-image:
 	@echo $(DIR)
@@ -41,4 +41,3 @@ distro-id:
 
 cleanup:
 	@rm -rf kernel/
-	@rm -rf "$(DIR)"
