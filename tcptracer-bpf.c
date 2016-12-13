@@ -242,7 +242,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
-	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
+	if (status == NULL || status->status != TCPTRACER_STATUS_READY) {
 		return 0;
 	}
 
@@ -297,7 +297,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		return 0;
 
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
-	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
+	if (status == NULL || status->status != TCPTRACER_STATUS_READY) {
 		return 0;
 	}
 
