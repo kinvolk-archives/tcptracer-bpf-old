@@ -65,6 +65,7 @@ struct tcptracer_status_t {
 	u16 dport;
 	u32 netns;
 	u16 family;
+	char padding[6];
 };
 
 struct bpf_map_def SEC("maps/tcptracer_status") tcptracer_status = {
