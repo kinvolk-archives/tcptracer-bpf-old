@@ -216,7 +216,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		.pid = pid >> 32,
 		.saddr = saddr,
 		.daddr = daddr,
-		.sport = ntohs(sport),
+		.sport = sport,
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
 	};
@@ -271,7 +271,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.pid = pid >> 32,
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = ntohs(sport),
+			.sport = sport,
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
