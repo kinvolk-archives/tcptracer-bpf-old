@@ -56,6 +56,7 @@ struct tcptracer_status_t {
 	u64 offset_sport;
 	u64 offset_dport;
 	u64 offset_netns;
+	u64 offset_ino;
 
 	u32 saddr;
 	u32 daddr;
@@ -121,6 +122,9 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		return 0;
 	}
 
+	char skc_net_msg[] = "%llu %llu\n";
+	bpf_trace_printk(skc_net_msg, sizeof(skc_net_msg), (u64)(&((struct sock *)NULL)->__sk_common.skc_net), (u64)((void *)(&((struct net *)NULL)->ns)) + (u64)((void *)(&((struct ns_common *)NULL)->inum)));
+
 	switch (status->status) {
 		case TCPTRACER_STATUS_UNINITIALIZED:
 			return 0;
@@ -137,6 +141,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			    .offset_sport = status->offset_sport,
 			    .offset_dport = status->offset_dport,
 			    .offset_netns = status->offset_netns,
+			    .offset_ino = status->offset_ino,
 			    .saddr = status->saddr,
 			    .daddr = status->daddr,
 			    .sport = status->sport,
@@ -149,7 +154,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 				u32 possible_daddr = 0;
 				u16 possible_sport = 0;
 				u16 possible_dport = 0;
-				possible_net_t possible_skc_net;
+				possible_net_t *possible_skc_net;
 				u32 possible_netns = 0;
 				case 0:
 					bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset_saddr);
@@ -168,9 +173,11 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 					updated_status.dport = possible_dport;
 					break;
 				case 4:
-					bpf_probe_read(&possible_skc_net, sizeof(possible_skc_net), ((char *)skp) + status->offset_netns);
-					// TODO offset here
-					bpf_probe_read(&possible_netns, sizeof(possible_netns), &possible_skc_net.net->ns.inum);
+					bpf_probe_read(&possible_skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
+					bpf_probe_read(&possible_netns, sizeof(possible_netns), ((char *)possible_skc_net) + status->offset_ino);
+					char netns_msg[] = "offset_netns = %llu, offset_ino = %llu, possible_netns = %llu\n";
+					bpf_trace_printk(netns_msg, sizeof(netns_msg), status->offset_netns, status->offset_ino, possible_netns);
+
 					updated_status.netns = possible_netns;
 					break;
 			}
