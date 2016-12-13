@@ -87,9 +87,6 @@ int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 		return 0;
 	}
 
-	char called_msg[] = "kprobe/tcp_v4_connect called\n";
-	bpf_trace_printk(called_msg, sizeof(called_msg));
-
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
 	bpf_map_update_elem(&connectsock_v4, &pid, &sk, BPF_ANY);
@@ -124,9 +121,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
 		return 0;
 	}
-
-	char skc_net_msg[] = "%llu %llu\n";
-	bpf_trace_printk(skc_net_msg, sizeof(skc_net_msg), (u64)(&((struct sock *)NULL)->__sk_common.skc_net), (u64)((void *)(&((struct net *)NULL)->ns)) + (u64)((void *)(&((struct ns_common *)NULL)->inum)));
 
 	switch (status->status) {
 		case TCPTRACER_STATUS_UNINITIALIZED:
