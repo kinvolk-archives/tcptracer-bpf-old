@@ -193,14 +193,15 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	struct ns_common *ns;
 	u32 saddr = 0, daddr = 0, net_ns_inum = 0;
 	u16 sport = 0, dport = 0;
-	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-	bpf_probe_read(&saddr, sizeof(saddr), &skp->__sk_common.skc_rcv_saddr);
-	bpf_probe_read(&daddr, sizeof(daddr), &skp->__sk_common.skc_daddr);
-	bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
+	bpf_probe_read(&sport, sizeof(sport), ((char *)skp) + status->offset_sport);
+	bpf_probe_read(&saddr, sizeof(saddr), ((char *)skp) + status->offset_saddr);
+	bpf_probe_read(&daddr, sizeof(daddr), ((char *)skp) + status->offset_daddr);
+	bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
 
 	// Get network namespace id
 	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &skp->__sk_common.skc_net);
+	bpf_probe_read(&skc_net, sizeof(skc_net), ((char *)skp) + status->offset_netns);
+	// FIXME offset here?
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
 
 	// output
@@ -226,106 +227,12 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	return 0;
 }
 
-SEC("kprobe/tcp_v6_connect")
-int kprobe__tcp_v6_connect(struct pt_regs *ctx)
-{
-	struct sock *sk;
-	u64 pid = bpf_get_current_pid_tgid();
-	/* TODO: remove printks */
-	char called_msg[] = "kprobe/tcp_v6_connect called\n";
-	bpf_trace_printk(called_msg, sizeof(called_msg));
-
-	sk = (struct sock *) PT_REGS_PARM1(ctx);
-
-	bpf_map_update_elem(&connectsock_v6, &pid, &sk, BPF_ANY);
-
-    return 0;
-}
-
-SEC("kretprobe/tcp_v6_connect")
-int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
-{
-	int ret = PT_REGS_RC(ctx);
-	u64 pid = bpf_get_current_pid_tgid();
-	struct sock **skpp;
-	/* TODO: remove printks */
-	char called_msg[] = "kretprobe/tcp_v6_connect called\n";
-	bpf_trace_printk(called_msg, sizeof(called_msg));
-
-	skpp = bpf_map_lookup_elem(&connectsock_v6, &pid);
-	if (skpp == 0) {
-		return 0;	// missed entry
-	}
-
-	if (ret != 0) {
-		// failed to send SYNC packet, may not have populated
-		// socket __sk_common.{skc_rcv_saddr, ...}
-		bpf_map_delete_elem(&connectsock_v6, &pid);
-		return 0;
-	}
-
-	// pull in details
-	struct sock *skp = *skpp;
-	struct ns_common *ns;
-	u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
-	u32 net_ns_inum = 0;
-	u16 sport = 0, dport = 0;
-	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-	bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
-
-	// if ports are 0, ignore
-	if (sport == 0 || dport == 0) {
-		bpf_map_delete_elem(&connectsock_v6, &pid);
-		return 0;
-	}
-
-	bpf_probe_read(&saddr_h, sizeof(saddr_h), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-	bpf_probe_read(&saddr_l, sizeof(saddr_l), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-	bpf_probe_read(&daddr_h, sizeof(daddr_h), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-	bpf_probe_read(&daddr_l, sizeof(daddr_l), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
-
-	// if addresses are 0, ignore
-	if (!(saddr_h || saddr_l) || !(daddr_h || daddr_l)) {
-		bpf_map_delete_elem(&connectsock_v6, &pid);
-		return 0;
-	}
-
-	// Get network namespace id
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &skp->__sk_common.skc_net);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
-
-	// output
-	struct tcp_event_v6_t evt = {
-		.timestamp = bpf_ktime_get_ns(),
-		.cpu = bpf_get_smp_processor_id(),
-		.ev_type = TCP_EVENT_TYPE_CONNECT,
-		.pid = pid >> 32,
-		.saddr_h = saddr_h,
-		.saddr_l = saddr_l,
-		.daddr_h = daddr_h,
-		.daddr_l = daddr_l,
-		.sport = ntohs(sport),
-		.dport = ntohs(dport),
-		.netns = net_ns_inum,
-	};
-
-	bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
-
-	// do not send event if IP address is :: or port is 0
-	if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-		bpf_perf_event_output(ctx, &tcp_event_v6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-	}
-
-	bpf_map_delete_elem(&connectsock_v6, &pid);
-
-	return 0;
-}
-
 SEC("kprobe/tcp_close")
 int kprobe__tcp_close(struct pt_regs *ctx)
 {
 	struct sock *sk;
+	struct tcptracer_status_t *status;
+	u64 zero = 0;
 	u64 pid = bpf_get_current_pid_tgid();
 	/* TODO: remove printks */
 	char called_msg[] = "kprobe/tcp_close called\n";
@@ -333,21 +240,29 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
+		return 0;
+	}
+
 	u32 net_ns_inum = 0;
 	u16 family = 0, sport = 0, dport = 0;
-	bpf_probe_read(&family, sizeof(family), &sk->__sk_common.skc_family);
-	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)sk)->inet_sport);
-	bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
+
+	bpf_probe_read(&sport, sizeof(sport), ((char *)sk) + status->offset_sport);
+	bpf_probe_read(&dport, sizeof(dport), ((char *)sk) + status->offset_dport);
+
+	// TODO get family
+	family = 2;
 
 	// Get network namespace id
 	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &sk->__sk_common.skc_net);
+	bpf_probe_read(&skc_net, sizeof(skc_net), ((char *)sk) + status->offset_netns);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
 
 	if (family == AF_INET) {
 		u32 saddr = 0, daddr = 0;
-		bpf_probe_read(&saddr, sizeof(saddr), &sk->__sk_common.skc_rcv_saddr);
-		bpf_probe_read(&daddr, sizeof(daddr), &sk->__sk_common.skc_daddr);
+		bpf_probe_read(&saddr, sizeof(saddr), ((char *)sk) + status->offset_saddr);
+		bpf_probe_read(&daddr, sizeof(daddr), ((char *)sk) + status->offset_daddr);
 		// output
 		struct tcp_event_v4_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
@@ -377,22 +292,32 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	char called_msg[] = "kretprobe/inet_csk_accept called\n";
 	bpf_trace_printk(called_msg, sizeof(called_msg));
 
+	struct tcptracer_status_t *status;
+	u64 zero = 0;
 	struct sock *newsk = (struct sock *)PT_REGS_RC(ctx);
 	u64 pid = bpf_get_current_pid_tgid();
 
 	if (newsk == NULL)
 		return 0;
 
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
+		return 0;
+	}
+
+	// TODO get protocol
 	// check this is TCP
 	u8 protocol = 0;
 	// workaround for reading the sk_protocol bitfield:
 	bpf_probe_read(&protocol, 1, (void *)((long)&newsk->sk_wmem_queued) - 3);
 	if (protocol != IPPROTO_TCP)
 		return 0;
+
 	// pull in details
 	u16 family = 0, lport = 0, dport = 0;
 	u32 net_ns_inum = 0;
 	bpf_probe_read(&family, sizeof(family), &newsk->__sk_common.skc_family);
+	// TODO get skc_num
 	bpf_probe_read(&lport, sizeof(lport), &newsk->__sk_common.skc_num);
 	bpf_probe_read(&dport, sizeof(dport), &newsk->__sk_common.skc_dport);
 // Get network namespace id, if kernel supports it
