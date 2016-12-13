@@ -149,35 +149,41 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			};
 
 			switch (status->what) {
-				u32 possible_saddr = 0;
-				u32 possible_daddr = 0;
-				u16 possible_sport = 0;
-				u16 possible_dport = 0;
+				u32 possible_saddr;
+				u32 possible_daddr;
+				u16 possible_sport;
+				u16 possible_dport;
 				possible_net_t *possible_skc_net;
-				u32 possible_netns = 0;
-				u16 possible_family = 0;
+				u32 possible_netns;
+				u16 possible_family;
 				case 0:
+					possible_saddr = 0;
 					bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset_saddr);
 					updated_status.saddr = possible_saddr;
 					break;
 				case 1:
+					possible_daddr = 0;
 					bpf_probe_read(&possible_daddr, sizeof(possible_daddr), ((char *)skp) + status->offset_daddr);
 					updated_status.daddr = possible_daddr;
 					break;
 				case 2:
+					possible_sport = 0;
 					bpf_probe_read(&possible_sport, sizeof(possible_sport), ((char *)skp) + status->offset_sport);
 					updated_status.sport = possible_sport;
 					break;
 				case 3:
+					possible_dport = 0;
 					bpf_probe_read(&possible_dport, sizeof(possible_dport), ((char *)skp) + status->offset_dport);
 					updated_status.dport = possible_dport;
 					break;
 				case 4:
+					possible_netns = 0;
 					bpf_probe_read(&possible_skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
 					bpf_probe_read(&possible_netns, sizeof(possible_netns), ((char *)possible_skc_net) + status->offset_ino);
 					updated_status.netns = possible_netns;
 					break;
 				case 5:
+					possible_family = 0;
 					bpf_probe_read(&possible_family, sizeof(possible_family), ((char *)skp) + status->offset_family);
 					updated_status.family = possible_family;
 					break;
