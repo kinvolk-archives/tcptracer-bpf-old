@@ -257,7 +257,6 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	bpf_probe_read(&sport, sizeof(sport), ((char *)sk) + status->offset_sport);
 	bpf_probe_read(&dport, sizeof(dport), ((char *)sk) + status->offset_dport);
 
-	// TODO get family
 	bpf_probe_read(&family, sizeof(family), ((char *)sk) + status->offset_family);
 
 	// Get network namespace id
@@ -314,6 +313,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	u16 family = 0, lport = 0, dport = 0;
 	u32 net_ns_inum = 0;
 	bpf_probe_read(&family, sizeof(family), ((char *)newsk) + status->offset_family);
+	// FIXME?
 	bpf_probe_read(&lport, sizeof(lport), ((char *)newsk) + status->offset_dport + 2);
 	bpf_probe_read(&dport, sizeof(dport), ((char *)newsk) + status->offset_dport);
 // Get network namespace id, if kernel supports it
