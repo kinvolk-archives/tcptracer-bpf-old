@@ -57,12 +57,14 @@ struct tcptracer_status_t {
 	u64 offset_dport;
 	u64 offset_netns;
 	u64 offset_ino;
+	u64 offset_family;
 
 	u32 saddr;
 	u32 daddr;
 	u16 sport;
 	u16 dport;
 	u32 netns;
+	u16 family;
 };
 
 struct bpf_map_def SEC("maps/tcptracer_status") tcptracer_status = {
@@ -142,11 +144,13 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			    .offset_dport = status->offset_dport,
 			    .offset_netns = status->offset_netns,
 			    .offset_ino = status->offset_ino,
+			    .offset_family = status->offset_family,
 			    .saddr = status->saddr,
 			    .daddr = status->daddr,
 			    .sport = status->sport,
 			    .dport = status->dport,
 			    .netns = status->netns,
+			    .family = status->family,
 			};
 
 			switch (status->what) {
@@ -156,6 +160,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 				u16 possible_dport = 0;
 				possible_net_t *possible_skc_net;
 				u32 possible_netns = 0;
+				u16 possible_family = 0;
 				case 0:
 					bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset_saddr);
 					updated_status.saddr = possible_saddr;
@@ -175,11 +180,11 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 				case 4:
 					bpf_probe_read(&possible_skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
 					bpf_probe_read(&possible_netns, sizeof(possible_netns), ((char *)possible_skc_net) + status->offset_ino);
-					char netns_msg[] = "offset_netns = %llu, offset_ino = %llu, possible_netns = %llu\n";
-					bpf_trace_printk(netns_msg, sizeof(netns_msg), status->offset_netns, status->offset_ino, possible_netns);
-
 					updated_status.netns = possible_netns;
 					break;
+				case 5:
+					bpf_probe_read(&possible_family, sizeof(possible_family), ((char *)skp) + status->offset_family);
+					updated_status.family = possible_family;
 			}
 			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
 
@@ -203,10 +208,9 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
 
 	// Get network namespace id
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), ((char *)skp) + status->offset_netns);
-	// TODO offset here
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
+	possible_net_t *skc_net;
+	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
 	// output
 	struct tcp_event_v4_t evt = {
@@ -253,12 +257,12 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	bpf_probe_read(&dport, sizeof(dport), ((char *)sk) + status->offset_dport);
 
 	// TODO get family
-	family = 2;
+	bpf_probe_read(&family, sizeof(family), ((char *)sk) + status->offset_family);
 
 	// Get network namespace id
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), ((char *)sk) + status->offset_netns);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
+	possible_net_t *skc_net;
+	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)sk) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
 	if (family == AF_INET) {
 		u32 saddr = 0, daddr = 0;
@@ -302,26 +306,20 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		return 0;
 	}
 
-	// TODO get protocol
-	// check this is TCP
-	u8 protocol = 0;
-	// workaround for reading the sk_protocol bitfield:
-	bpf_probe_read(&protocol, 1, (void *)((long)&newsk->sk_wmem_queued) - 3);
-	if (protocol != IPPROTO_TCP)
-		return 0;
+	// FIXME? assume this is TCP
+	u8 protocol = IPPROTO_TCP;
 
 	// pull in details
 	u16 family = 0, lport = 0, dport = 0;
 	u32 net_ns_inum = 0;
-	bpf_probe_read(&family, sizeof(family), &newsk->__sk_common.skc_family);
-	// TODO get skc_num
-	bpf_probe_read(&lport, sizeof(lport), &newsk->__sk_common.skc_num);
-	bpf_probe_read(&dport, sizeof(dport), &newsk->__sk_common.skc_dport);
+	bpf_probe_read(&family, sizeof(family), ((char *)newsk) + status->offset_family);
+	bpf_probe_read(&lport, sizeof(lport), ((char *)newsk) + status->offset_dport + 2);
+	bpf_probe_read(&dport, sizeof(dport), ((char *)newsk) + status->offset_dport);
 // Get network namespace id, if kernel supports it
 #ifdef CONFIG_NET_NS
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &newsk->__sk_common.skc_net);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
+	possible_net_t *skc_net;
+	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)newsk) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 #else
 	net_ns_inum = 0;
 #endif
@@ -333,11 +331,10 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 			.netns = net_ns_inum,
 		};
 		evt.pid = pid >> 32;
-		bpf_probe_read(&evt.saddr, sizeof(u32),
-			&newsk->__sk_common.skc_rcv_saddr);
-		bpf_probe_read(&evt.daddr, sizeof(u32),
-			&newsk->__sk_common.skc_daddr);
-			evt.sport = lport;
+
+		bpf_probe_read(&evt.saddr, sizeof(u32), ((char *)newsk) + status->offset_saddr);
+		bpf_probe_read(&evt.daddr, sizeof(u32), ((char *)newsk) + status->offset_daddr);
+		evt.sport = lport;
 		evt.dport = ntohs(dport);
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is 0.0.0.0 or port is 0
