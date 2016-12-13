@@ -130,7 +130,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		case TCPTRACER_STATUS_UNINITIALIZED:
 			return 0;
 		case TCPTRACER_STATUS_CHECKING:
-			if (status->pid_tgid != pid)
+			if (status->pid_tgid >> 32 != pid >> 32)
 				return 0;
 
 			struct tcptracer_status_t updated_status = {
