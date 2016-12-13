@@ -82,7 +82,8 @@ struct tcptracer_status_t {
 	/* checking */
 	u64 pid_tgid;
 	u64 what;
-	u64 offset;
+	u64 offset_saddr;
+	u64 offset_sport;
 
 	u32 saddr;
 	u32 daddr;
@@ -164,25 +165,53 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			if (status->pid_tgid != pid)
 				return 0;
 
-			u32 possible_saddr = 0;
+//			switch (status->what) {
+				u32 possible_saddr = 0;
+				u16 possible_sport = 0;
+				struct sock *skp = *skpp;
+//				case 0:
+				/*
+					bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset_saddr);
+					char called_msg_saddr[] = "offset_saddr = %llu, possible_saddr = %llx, saddr = %llx\n";
+					bpf_trace_printk(called_msg_saddr, sizeof(called_msg_saddr), status->offset_saddr, possible_saddr, status->saddr);
 
-			struct sock *skp = *skpp;
-			bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset);
-			char called_msg[] = "offset = %llu, possible_saddr = %llx, saddr = %llx\n";
-			bpf_trace_printk(called_msg, sizeof(called_msg), status->offset, possible_saddr, status->saddr);
+					// TODO *ugly* deduplicate this
+					struct tcptracer_status_t updated_status_saddr = {
+					    .status = TCPTRACER_STATUS_CHECKED,
+					    .pid_tgid = status->pid_tgid ,
+					    .what = status->what,
+					    .offset_saddr = status->offset_saddr,
+					    .offset_sport = status->offset_sport,
+					    .saddr = possible_saddr,
+					    .daddr = status->daddr,
+					    .sport = status->sport,
+					    .dport= status->dport,
+					    .netns= status->netns,
+					};
+					bpf_map_update_elem(&tcptracer_status, &zero, &updated_status_saddr, BPF_ANY);
+					break;
+				case 4:
+				*/
+					bpf_probe_read(&possible_sport, sizeof(possible_sport), ((char *)skp) + status->offset_sport);
+					char called_msg_sport[] = "offset_sport = %llu, possible_sport = %llx, sport = %llx\n";
+					bpf_trace_printk(called_msg_sport, sizeof(called_msg_sport), status->offset_sport, possible_sport, status->sport);
 
-			struct tcptracer_status_t updated_status = {
-			    .status = TCPTRACER_STATUS_CHECKED,
-			    .pid_tgid = status->pid_tgid ,
-			    .what = status->what,
-			    .offset = status->offset,
-			    .saddr = possible_saddr,
-			    .daddr = status->daddr,
-			    .sport = status->sport,
-			    .dport= status->dport,
-			    .netns= status->netns,
-			};
-			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
+					struct tcptracer_status_t updated_status_sport = {
+					    .status = TCPTRACER_STATUS_CHECKED,
+					    .pid_tgid = status->pid_tgid ,
+					    .what = status->what,
+					    .offset_saddr = status->offset_saddr,
+					    .offset_sport = status->offset_sport,
+					    .saddr = status->saddr,
+					    .daddr = status->daddr,
+					    .sport = possible_sport,
+					    .dport= status->dport,
+					    .netns= status->netns,
+					};
+					bpf_map_update_elem(&tcptracer_status, &zero, &updated_status_sport, BPF_ANY);
+
+//					break;
+//			}
 
 			return 0;
 		case TCPTRACER_STATUS_CHECKED:
