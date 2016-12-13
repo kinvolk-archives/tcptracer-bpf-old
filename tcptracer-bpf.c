@@ -178,6 +178,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 					break;
 				case 4:
 					possible_netns = 0;
+					possible_skc_net = NULL;
 					bpf_probe_read(&possible_skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
 					bpf_probe_read(&possible_netns, sizeof(possible_netns), ((char *)possible_skc_net) + status->offset_ino);
 					updated_status.netns = possible_netns;
@@ -202,8 +203,13 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 	// pull in details
 	struct ns_common *ns;
-	u32 saddr = 0, daddr = 0, net_ns_inum = 0;
-	u16 sport = 0, dport = 0;
+	u32 saddr, daddr, net_ns_inum;
+	u16 sport, dport;
+	
+	sport = 0;
+	saddr = 0;
+	daddr = 0;
+	dport = 0;
 	bpf_probe_read(&sport, sizeof(sport), ((char *)skp) + status->offset_sport);
 	bpf_probe_read(&saddr, sizeof(saddr), ((char *)skp) + status->offset_saddr);
 	bpf_probe_read(&daddr, sizeof(daddr), ((char *)skp) + status->offset_daddr);
@@ -211,6 +217,9 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 	// Get network namespace id
 	possible_net_t *skc_net;
+
+	skc_net = NULL;
+	net_ns_inum = 0;
 	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
@@ -252,21 +261,29 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		return 0;
 	}
 
-	u32 net_ns_inum = 0;
-	u16 family = 0, sport = 0, dport = 0;
+	u32 net_ns_inum;
+	u16 family, sport, dport;
 
+	sport = 0;
+	dport = 0;
+	family = 0;
 	bpf_probe_read(&sport, sizeof(sport), ((char *)sk) + status->offset_sport);
 	bpf_probe_read(&dport, sizeof(dport), ((char *)sk) + status->offset_dport);
-
 	bpf_probe_read(&family, sizeof(family), ((char *)sk) + status->offset_family);
 
 	// Get network namespace id
 	possible_net_t *skc_net;
+
+	skc_net = NULL;
+	net_ns_inum = 0;
 	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)sk) + status->offset_netns);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
 	if (family == AF_INET) {
-		u32 saddr = 0, daddr = 0;
+		u32 saddr, daddr;
+		
+		saddr = 0;
+		daddr = 0;
 		bpf_probe_read(&saddr, sizeof(saddr), ((char *)sk) + status->offset_saddr);
 		bpf_probe_read(&daddr, sizeof(daddr), ((char *)sk) + status->offset_daddr);
 		// output
@@ -307,12 +324,19 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		return 0;
 	}
 
+	u8 protocol;
+
 	// FIXME? assume this is TCP
-	u8 protocol = IPPROTO_TCP;
+	protocol = IPPROTO_TCP;
 
 	// pull in details
-	u16 family = 0, lport = 0, dport = 0;
-	u32 net_ns_inum = 0;
+	u16 family, lport, dport;
+	u32 net_ns_inum;
+
+	family = 0;
+	lport = 0;
+	dport = 0;
+
 	bpf_probe_read(&family, sizeof(family), ((char *)newsk) + status->offset_family);
 	// FIXME?
 	bpf_probe_read(&lport, sizeof(lport), ((char *)newsk) + status->offset_dport + 2);
@@ -320,6 +344,9 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 // Get network namespace id, if kernel supports it
 #ifdef CONFIG_NET_NS
 	possible_net_t *skc_net;
+	
+	skc_net = NULL;
+	net_ns_inum = 0;
 	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)newsk) + status->offset_netns);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 #else
