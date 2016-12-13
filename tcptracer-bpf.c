@@ -185,6 +185,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 				case 5:
 					bpf_probe_read(&possible_family, sizeof(possible_family), ((char *)skp) + status->offset_family);
 					updated_status.family = possible_family;
+					break;
 			}
 			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
 
