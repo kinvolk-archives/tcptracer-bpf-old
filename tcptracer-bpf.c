@@ -220,10 +220,13 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
 
 	// Get network namespace id
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), ((char *)skp) + status->offset_netns);
+	possible_net_t *skc_net;
+       skc_net = NULL;
+       net_ns_inum = 0;
+
+	bpf_probe_read(&skc_net, sizeof(void *), ((char *)skp) + status->offset_netns);
 	// FIXME offset here?
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
 	// output
 	struct tcp_event_v4_t evt = {
@@ -240,9 +243,11 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 	bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 
+	u32 cpu;
+	cpu = bpf_get_smp_processor_id();
 	// do not send event if IP address is 0.0.0.0 or port is 0
 	if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-		bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+		ret = bpf_perf_event_output(ctx, &tcp_event_v4, cpu, &evt, sizeof(evt));
 	}
 
 	return 0;
@@ -255,6 +260,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	struct tcptracer_status_t *status;
 	u64 zero = 0;
 	u64 pid = bpf_get_current_pid_tgid();
+	u32 cpu = bpf_get_smp_processor_id();
 	/* TODO: remove printks */
 	char called_msg[] = "kprobe/tcp_close called\n";
 	bpf_trace_printk(called_msg, sizeof(called_msg));
@@ -306,7 +312,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is 0.0.0.0 or port is 0
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_v4, cpu, &evt, sizeof(evt));
 		}
 	} // else drop
 
@@ -319,6 +325,8 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	/* TODO: remove printks */
 	char called_msg[] = "kretprobe/inet_csk_accept called\n";
 	bpf_trace_printk(called_msg, sizeof(called_msg));
+	u32 cpu;
+	cpu = bpf_get_smp_processor_id();
 
 	struct tcptracer_status_t *status;
 	u64 zero = 0;
@@ -377,7 +385,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is 0.0.0.0 or port is 0
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_v4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_v4, cpu, &evt, sizeof(evt));
 		}
 	} // else drop
 
@@ -385,4 +393,5 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 }
 
 char _license[] SEC("license") = "GPL";
-__u32 _version SEC("version") = 264205;
+//__u32 _version SEC("version") = 264205; // iago
+__u32 _version SEC("version") = 263191; // amazon
