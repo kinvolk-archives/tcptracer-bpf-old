@@ -393,5 +393,6 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 }
 
 char _license[] SEC("license") = "GPL";
-//__u32 _version SEC("version") = 264205; // iago
-__u32 _version SEC("version") = 263191; // amazon
+// this number will be interpreted by gobpf-elf-loader to set the current
+// running kernel version
+__u32 _version SEC("version") = 0xFFFFFFFE;
