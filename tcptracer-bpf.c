@@ -262,6 +262,9 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 					bpf_probe_read(&possible_family, sizeof(possible_family), ((char *)skp) + status->offset_family);
 					updated_status.family = possible_family;
 					break;
+				default:
+					// not for us
+					return 0;
 			}
 			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
 
@@ -327,7 +330,9 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 {
 	int ret = PT_REGS_RC(ctx);
 	u64 pid = bpf_get_current_pid_tgid();
+	u64 zero = 0;
 	struct sock **skpp;
+	struct tcptracer_status_t *status;
 	skpp = bpf_map_lookup_elem(&connectsock, &pid);
 	if (skpp == 0) {
 		return 0;	// missed entry
@@ -342,6 +347,70 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	}
 
 	struct sock *skp = *skpp;
+
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
+		return 0;
+	}
+
+	switch (status->status) {
+		case TCPTRACER_STATUS_UNINITIALIZED:
+			return 0;
+		case TCPTRACER_STATUS_CHECKING:
+			if (status->pid_tgid >> 32 != pid >> 32)
+				return 0;
+
+			struct tcptracer_status_t updated_status = {
+			    .status = TCPTRACER_STATUS_CHECKED,
+			    .pid_tgid = status->pid_tgid,
+			    .what = status->what,
+			    .offset_saddr = status->offset_saddr,
+			    .offset_daddr = status->offset_daddr,
+			    .offset_sport = status->offset_sport,
+			    .offset_dport = status->offset_dport,
+			    .offset_netns = status->offset_netns,
+			    .offset_ino = status->offset_ino,
+			    .offset_family = status->offset_family,
+			    .saddr = status->saddr,
+			    .daddr = status->daddr,
+			    .sport = status->sport,
+			    .dport = status->dport,
+			    .netns = status->netns,
+			    .family = status->family,
+			};
+
+			switch (status->what) {
+				u64 possible_saddr_h;
+				u64 possible_saddr_l;
+				u64 possible_daddr_h;
+				u64 possible_daddr_l;
+				case 6:
+					// TODO
+					break;
+				case 7:
+					// TODO
+					break;
+				case 8:
+					// TODO
+					break;
+				case 9:
+					// TODO
+					break;
+				default:
+					// not for us
+					return 0;
+			}
+			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
+
+			return 0;
+		case TCPTRACER_STATUS_CHECKED:
+			return 0;
+		case TCPTRACER_STATUS_READY:
+			// continue
+			break;
+		default:
+			return 0;
+	}
 
 	// pull in details
 	struct ns_common *ns;
@@ -382,12 +451,21 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 {
 	u64 pid = bpf_get_current_pid_tgid();
 	struct sock *skp;
+	struct tcptracer_status_t *status;
 	int state;
+	u64 zero = 0;
 	skp =  (struct sock *) PT_REGS_PARM1(ctx);
 	state = (int) PT_REGS_PARM2(ctx);
+
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || status->status != TCPTRACER_STATUS_READY) {
+		return 0;
+	}
+
 	if (state != TCP_ESTABLISHED) {
 		return 0;
 	}
+
 	struct ns_common *ns;
 	u32 net_ns_inum = 0;
 	u16 sport = 0, dport = 0, family = 0;
@@ -500,6 +578,12 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	u64 zero = 0;
 	u64 pid = bpf_get_current_pid_tgid();
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
+
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || status->status != TCPTRACER_STATUS_READY) {
+		return 0;
+	}
+
 	u32 net_ns_inum = 0;
 	u16 family = 0, sport = 0, dport = 0;
 	// Get network namespace id, if kernel supports it
@@ -584,12 +668,19 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 SEC("kretprobe/inet_csk_accept")
 int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 {
+	struct tcptracer_status_t *status;
+	u64 zero = 0;
 	struct sock *newsk = (struct sock *)PT_REGS_RC(ctx);
 	u64 pid = bpf_get_current_pid_tgid();
 
 	if (newsk == NULL)
 		return 0;
 
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || status->status != TCPTRACER_STATUS_READY) {
+		return 0;
+	}
+	//
 	// check this is TCP
 	u8 protocol = 0;
 	// workaround for reading the sk_protocol bitfield:
