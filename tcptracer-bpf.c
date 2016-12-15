@@ -132,6 +132,10 @@ struct tcptracer_status_t {
 	u64 offset_netns;
 	u64 offset_ino;
 	u64 offset_family;
+	u64 offset_saddr_h;
+	u64 offset_saddr_l;
+	u64 offset_daddr_h;
+	u64 offset_daddr_l;
 
 	u32 saddr;
 	u32 daddr;
@@ -139,6 +143,10 @@ struct tcptracer_status_t {
 	u16 dport;
 	u32 netns;
 	u16 family;
+	u64 saddr_h;
+	u64 saddr_l;
+	u64 daddr_h;
+	u64 daddr_l;
 	char padding[6];
 };
 
@@ -214,12 +222,20 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			    .offset_netns = status->offset_netns,
 			    .offset_ino = status->offset_ino,
 			    .offset_family = status->offset_family,
+			    .offset_saddr_h = status->offset_saddr_h,
+			    .offset_saddr_l = status->offset_saddr_l,
+			    .offset_daddr_h = status->offset_daddr_h,
+			    .offset_daddr_l = status->offset_daddr_l,
 			    .saddr = status->saddr,
 			    .daddr = status->daddr,
 			    .sport = status->sport,
 			    .dport = status->dport,
 			    .netns = status->netns,
 			    .family = status->family,
+			    .saddr_h = status->saddr_h,
+			    .saddr_l = status->saddr_l,
+			    .daddr_h = status->daddr_h,
+			    .daddr_l = status->daddr_l,
 			};
 
 			switch (status->what) {
@@ -371,12 +387,20 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 			    .offset_netns = status->offset_netns,
 			    .offset_ino = status->offset_ino,
 			    .offset_family = status->offset_family,
+			    .offset_saddr_h = status->offset_saddr_h,
+			    .offset_saddr_l = status->offset_saddr_l,
+			    .offset_daddr_h = status->offset_daddr_h,
+			    .offset_daddr_l = status->offset_daddr_l,
 			    .saddr = status->saddr,
 			    .daddr = status->daddr,
 			    .sport = status->sport,
 			    .dport = status->dport,
 			    .netns = status->netns,
 			    .family = status->family,
+			    .saddr_h = status->saddr_h,
+			    .saddr_l = status->saddr_l,
+			    .daddr_h = status->daddr_h,
+			    .daddr_l = status->daddr_l,
 			};
 
 			switch (status->what) {
