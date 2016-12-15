@@ -211,32 +211,31 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			if (status->pid_tgid >> 32 != pid >> 32)
 				return 0;
 
-			struct tcptracer_status_t updated_status = {
-			    .status = TCPTRACER_STATUS_CHECKED,
-			    .pid_tgid = status->pid_tgid,
-			    .what = status->what,
-			    .offset_saddr = status->offset_saddr,
-			    .offset_daddr = status->offset_daddr,
-			    .offset_sport = status->offset_sport,
-			    .offset_dport = status->offset_dport,
-			    .offset_netns = status->offset_netns,
-			    .offset_ino = status->offset_ino,
-			    .offset_family = status->offset_family,
-			    .offset_saddr_h = status->offset_saddr_h,
-			    .offset_saddr_l = status->offset_saddr_l,
-			    .offset_daddr_h = status->offset_daddr_h,
-			    .offset_daddr_l = status->offset_daddr_l,
-			    .saddr = status->saddr,
-			    .daddr = status->daddr,
-			    .sport = status->sport,
-			    .dport = status->dport,
-			    .netns = status->netns,
-			    .family = status->family,
-			    .saddr_h = status->saddr_h,
-			    .saddr_l = status->saddr_l,
-			    .daddr_h = status->daddr_h,
-			    .daddr_l = status->daddr_l,
-			};
+			struct tcptracer_status_t updated_status = { };
+			updated_status.status = TCPTRACER_STATUS_CHECKED;
+			updated_status.pid_tgid = status->pid_tgid;
+			updated_status.what = status->what;
+			updated_status.offset_saddr = status->offset_saddr;
+			updated_status.offset_daddr = status->offset_daddr;
+			updated_status.offset_sport = status->offset_sport;
+			updated_status.offset_dport = status->offset_dport;
+			updated_status.offset_netns = status->offset_netns;
+			updated_status.offset_ino = status->offset_ino;
+			updated_status.offset_family = status->offset_family;
+			updated_status.offset_saddr_h = status->offset_saddr_h;
+			updated_status.offset_saddr_l = status->offset_saddr_l;
+			updated_status.offset_daddr_h = status->offset_daddr_h;
+			updated_status.offset_daddr_l = status->offset_daddr_l;
+			updated_status.saddr = status->saddr;
+			updated_status.daddr = status->daddr;
+			updated_status.sport = status->sport;
+			updated_status.dport = status->dport;
+			updated_status.netns = status->netns;
+			updated_status.family = status->family;
+			updated_status.saddr_h = status->saddr_h;
+			updated_status.saddr_l = status->saddr_l;
+			updated_status.daddr_h = status->daddr_h;
+			updated_status.daddr_l = status->daddr_l;
 
 			switch (status->what) {
 				u32 possible_saddr;
@@ -424,7 +423,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 					// not for us
 					return 0;
 			}
-			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
+//			bpf_map_update_elem(&tcptracer_status, &zero, &updated_status, BPF_ANY);
 
 			return 0;
 		case TCPTRACER_STATUS_CHECKED:
