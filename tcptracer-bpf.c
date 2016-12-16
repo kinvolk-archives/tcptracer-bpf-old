@@ -132,7 +132,7 @@ struct tcptracer_status_t {
 	u64 offset_netns;
 	u64 offset_ino;
 	u64 offset_family;
-	u64 offset_ipv6_addr;
+	u64 offset_daddr_ipv6;
 
 	u32 saddr;
 	u32 daddr;
@@ -140,7 +140,7 @@ struct tcptracer_status_t {
 	u16 dport;
 	u32 netns;
 	u16 family;
-	u32 ipv6_addr[4];
+	u32 daddr_ipv6[4];
 	char padding[6];
 };
 
@@ -189,10 +189,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 		return 0;
 	}
 
-	/* TODO: remove printks */
-	char called_msg[] = "kretprobe/tcp_v4_connect called\n";
-	bpf_trace_printk(called_msg, sizeof(called_msg));
-
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
 	if (status == NULL || status->status == TCPTRACER_STATUS_UNINITIALIZED) {
 		return 0;
@@ -216,7 +212,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			updated_status.offset_netns = status->offset_netns;
 			updated_status.offset_ino = status->offset_ino;
 			updated_status.offset_family = status->offset_family;
-			updated_status.offset_ipv6_addr = status->offset_ipv6_addr;
+			updated_status.offset_daddr_ipv6 = status->offset_daddr_ipv6;
 			updated_status.saddr = status->saddr;
 			updated_status.daddr = status->daddr;
 			updated_status.sport = status->sport;
@@ -226,7 +222,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 			int i;
 			for (i = 0; i < 4; i++) {
-				updated_status.ipv6_addr[i] = status->ipv6_addr[i];
+				updated_status.daddr_ipv6[i] = status->daddr_ipv6[i];
 			}
 
 			switch (status->what) {
@@ -287,18 +283,25 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 	// pull in details
 	struct ns_common *ns;
-	u32 saddr = 0, daddr = 0, net_ns_inum = 0;
-	u16 sport = 0, dport = 0;
-	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-	bpf_probe_read(&saddr, sizeof(saddr), &skp->__sk_common.skc_rcv_saddr);
-	bpf_probe_read(&daddr, sizeof(daddr), &skp->__sk_common.skc_daddr);
-	bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
+	u32 saddr, daddr, net_ns_inum;
+	u16 sport, dport;
+
+	sport = 0;
+	saddr = 0;
+	daddr = 0;
+	dport = 0;
+	bpf_probe_read(&sport, sizeof(sport), ((char *)skp) + status->offset_sport);
+	bpf_probe_read(&saddr, sizeof(saddr), ((char *)skp) + status->offset_saddr);
+	bpf_probe_read(&daddr, sizeof(daddr), ((char *)skp) + status->offset_daddr);
+	bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
+
 	// Get network namespace id
-#ifdef CONFIG_NET_NS
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &skp->__sk_common.skc_net);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
-#endif
+	possible_net_t *skc_net;
+	skc_net = NULL;
+	net_ns_inum = 0;
+
+	bpf_probe_read(&skc_net, sizeof(void *), ((char *)skp) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 	// if addresses or ports are 0, ignore
 	if (saddr == 0 || daddr == 0 || sport == 0 || dport == 0) {
 		return 0;
@@ -307,7 +310,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	struct ipv4_tuple_t t = {
 		.saddr = saddr,
 		.daddr = daddr,
-		.sport = ntohs(sport),
+		.sport = sport,
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
 	};
@@ -347,10 +350,6 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 
 	bpf_map_delete_elem(&connectsock, &pid);
 
-	/* TODO: remove printks */
-	char called_msg[] = "kretprobe/tcp_v6_connect called\n";
-	bpf_trace_printk(called_msg, sizeof(called_msg));
-
 	struct sock *skp = *skpp;
 
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
@@ -376,7 +375,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 			updated_status.offset_netns = status->offset_netns;
 			updated_status.offset_ino = status->offset_ino;
 			updated_status.offset_family = status->offset_family;
-			updated_status.offset_ipv6_addr = status->offset_ipv6_addr;
+			updated_status.offset_daddr_ipv6 = status->offset_daddr_ipv6;
 			updated_status.saddr = status->saddr;
 			updated_status.daddr = status->daddr;
 			updated_status.sport = status->sport;
@@ -386,17 +385,17 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 
 			int i;
 			for (i = 0; i < 4; i++) {
-				updated_status.ipv6_addr[i] = status->ipv6_addr[i];
+				updated_status.daddr_ipv6[i] = status->daddr_ipv6[i];
 			}
 
+			u32 possible_daddr_ipv6[4] = { };
 			switch (status->what) {
-				u32 possible_ipv6_addr[4];
 				case 6:
-					bpf_probe_read(&possible_ipv6_addr, sizeof(possible_ipv6_addr), ((char *)skp) + status->offset_ipv6_addr);
+					bpf_probe_read(&possible_daddr_ipv6, sizeof(possible_daddr_ipv6), ((char *)skp) + status->offset_daddr_ipv6);
 
 					int i;
 					for (i = 0; i < 4; i++) {
-						updated_status.ipv6_addr[i] = possible_ipv6_addr[i];
+						updated_status.daddr_ipv6[i] = possible_daddr_ipv6[i];
 					}
 					break;
 				default:
@@ -424,15 +423,32 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 
 	// pull in details
 	struct ns_common *ns;
-	u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
-	u32 net_ns_inum = 0;
-	u16 sport = 0, dport = 0;
-	bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-	bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
-	bpf_probe_read(&saddr_h, sizeof(saddr_h), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-	bpf_probe_read(&saddr_l, sizeof(saddr_l), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-	bpf_probe_read(&daddr_h, sizeof(daddr_h), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-	bpf_probe_read(&daddr_l, sizeof(daddr_l), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
+	u64 saddr_h, saddr_l, daddr_h, daddr_l;
+	u64 saddr_h_good, saddr_l_good, daddr_h_good, daddr_l_good;
+	u32 net_ns_inum;
+	u16 sport, dport;
+
+	sport = 0;
+	dport = 0;
+	saddr_h = 0;
+	saddr_l = 0;
+	daddr_h = 0;
+	daddr_l = 0;
+
+	bpf_probe_read(&sport, sizeof(sport), ((char *)skp) + status->offset_sport);
+	bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
+	bpf_probe_read(&daddr_h, sizeof(daddr_h), ((char *)skp) + status->offset_daddr_ipv6);
+	bpf_probe_read(&daddr_l, sizeof(daddr_l), ((char *)skp) + status->offset_daddr_ipv6 + sizeof(u64));
+	bpf_probe_read(&saddr_h, sizeof(saddr_h), ((char *)skp) + status->offset_daddr_ipv6 + 2 * sizeof(u64));
+	bpf_probe_read(&saddr_l, sizeof(saddr_l), ((char *)skp) + status->offset_daddr_ipv6 + 3 * sizeof(u64));
+
+	// Get network namespace id
+	possible_net_t *skc_net;
+	skc_net = NULL;
+	net_ns_inum = 0;
+
+	bpf_probe_read(&skc_net, sizeof(void *), ((char *)skp) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
 	// if addresses or ports are 0, ignore
 	if (!(saddr_h || saddr_l) || !(daddr_h || daddr_l) || sport == 0 || dport == 0) {
@@ -444,12 +460,13 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		.saddr_l = saddr_l,
 		.daddr_h = daddr_h,
 		.daddr_l = daddr_l,
-		.sport = ntohs(sport),
+		.sport = sport,
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
 	};
 
-	struct pid_comm p = { .pid = pid };
+	struct pid_comm p = { };
+	p.pid = pid;
 	bpf_get_current_comm(p.comm, sizeof(p.comm));
 	bpf_map_update_elem(&tuplepid_ipv6, &t, &p, BPF_ANY);
 
@@ -476,22 +493,28 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		return 0;
 	}
 
-	struct ns_common *ns;
-	u32 net_ns_inum = 0;
-	u16 sport = 0, dport = 0, family = 0;
-	// Get network namespace id, if kernel supports it
-#ifdef CONFIG_NET_NS
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &skp->__sk_common.skc_net);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
-#endif
-	bpf_probe_read(&family, sizeof(family), &skp->__sk_common.skc_family);
+	u32 net_ns_inum;
+	u16 sport, dport, family;
+	possible_net_t *skc_net;
+
+	net_ns_inum = 0;
+	sport = 0;
+	dport = 0;
+	family = 0;
+	skc_net = NULL;
+
+	bpf_probe_read(&skc_net, sizeof(void *), ((char *)skp) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
+	bpf_probe_read(&family, sizeof(family), ((char *)skp) + status->offset_family);
 	if (family == AF_INET) {
-		u32 saddr = 0, daddr = 0;
-		bpf_probe_read(&saddr, sizeof(saddr), &skp->__sk_common.skc_rcv_saddr);
-		bpf_probe_read(&daddr, sizeof(daddr), &skp->__sk_common.skc_daddr);
-		bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-		bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
+		u32 saddr, daddr;
+		saddr = 0;
+		daddr = 0;
+
+		bpf_probe_read(&saddr, sizeof(saddr), ((char *)skp) + status->offset_saddr);
+		bpf_probe_read(&daddr, sizeof(daddr), ((char *)skp) + status->offset_daddr);
+		bpf_probe_read(&sport, sizeof(sport), ((char *)skp) + status->offset_sport);
+		bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
 		// if addresses or ports are 0, ignore
 		if (saddr == 0 || daddr == 0 || sport == 0 || dport == 0) {
 			return 0;
@@ -499,7 +522,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		struct ipv4_tuple_t t = {
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = ntohs(sport),
+			.sport = sport,
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -508,7 +531,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		if (pp == 0) {
 			return 0;	// missed entry
 		}
-		struct pid_comm p;
+		struct pid_comm p = { };
 		bpf_probe_read(&p, sizeof(struct pid_comm), pp);
 		struct tcp_ipv4_event_t evt4 = {
 			.timestamp = bpf_ktime_get_ns(),
@@ -517,7 +540,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 			.pid = p.pid >> 32,
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = ntohs(sport),
+			.sport = sport,
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -525,26 +548,36 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		for (i = 0; i < TASK_COMM_LEN; i++) {
 			evt4.comm[i] = p.comm[i];
 		}
-		bpf_perf_event_output(ctx, &tcp_event_ipv4, BPF_F_CURRENT_CPU, &evt4, sizeof(evt4));
+
+		u32 cpu;
+		cpu = bpf_get_smp_processor_id();
+		bpf_perf_event_output(ctx, &tcp_event_ipv4, cpu, &evt4, sizeof(evt4));
 		bpf_map_delete_elem(&tuplepid_ipv4, &t);
 	} else if (family == AF_INET6) {
-		u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
-		bpf_probe_read(&saddr_h, sizeof(saddr_h), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		bpf_probe_read(&saddr_l, sizeof(saddr_l), &skp->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&daddr_h, sizeof(daddr_h), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		bpf_probe_read(&daddr_l, sizeof(daddr_l), &skp->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)skp)->inet_sport);
-		bpf_probe_read(&dport, sizeof(dport), &skp->__sk_common.skc_dport);
+		u64 saddr_h, saddr_l, daddr_h, daddr_l;
+		saddr_h = 0;
+		saddr_l = 0;
+		daddr_h = 0;
+		daddr_l = 0;
+
+		bpf_probe_read(&daddr_h, sizeof(daddr_h), ((char *)skp) + status->offset_daddr_ipv6);
+		bpf_probe_read(&daddr_l, sizeof(daddr_l), ((char *)skp) + status->offset_daddr_ipv6 + sizeof(u64));
+		bpf_probe_read(&saddr_h, sizeof(saddr_h), ((char *)skp) + status->offset_daddr_ipv6 + 2 * sizeof(u64));
+		bpf_probe_read(&saddr_l, sizeof(saddr_l), ((char *)skp) + status->offset_daddr_ipv6 + 3 * sizeof(u64));
+		bpf_probe_read(&sport, sizeof(sport), ((char *)skp) + status->offset_sport);
+		bpf_probe_read(&dport, sizeof(dport), ((char *)skp) + status->offset_dport);
+
 		// if addresses or ports are 0, ignore
 		if ((saddr_h || saddr_l) == 0 || (daddr_h || daddr_l) == 0 || sport == 0 || dport == 0 ) {
 			return 0;
 		}
+
 		struct ipv6_tuple_t t = {
 			t.saddr_h = saddr_h,
 			t.saddr_l = saddr_l,
 			t.daddr_h = daddr_h,
 			t.daddr_l = daddr_l,
-			t.sport = ntohs(sport),
+			t.sport = sport,
 			t.dport = ntohs(dport),
 			t.netns = net_ns_inum,
 		};
@@ -553,7 +586,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		if (pp == 0) {
 			return 0;       // missed entry
 		}
-		struct pid_comm p;
+		struct pid_comm p = { };
 		bpf_probe_read(&p, sizeof(struct pid_comm), pp);
 		struct tcp_ipv6_event_t evt6 = {
 			.timestamp = bpf_ktime_get_ns(),
@@ -564,7 +597,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 			.saddr_l = saddr_l,
 			.daddr_h = daddr_h,
 			.daddr_l = daddr_l,
-			.sport = ntohs(sport),
+			.sport = sport,
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -572,10 +605,12 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		for (i = 0; i < TASK_COMM_LEN; i++) {
 			evt6.comm[i] = p.comm[i];
 		}
-		bpf_perf_event_output(ctx, &tcp_event_ipv6, BPF_F_CURRENT_CPU, &evt6, sizeof(evt6));
+
+		u32 cpu;
+		cpu = bpf_get_smp_processor_id();
+		bpf_perf_event_output(ctx, &tcp_event_ipv6, cpu, &evt6, sizeof(evt6));
 		bpf_map_delete_elem(&tuplepid_ipv6, &t);
 	}
-
 
 	return 0;
 }
@@ -587,6 +622,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	struct tcptracer_status_t *status;
 	u64 zero = 0;
 	u64 pid = bpf_get_current_pid_tgid();
+	u32 cpu = bpf_get_smp_processor_id();
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
 	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
@@ -594,25 +630,35 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		return 0;
 	}
 
-	u32 net_ns_inum = 0;
-	u16 family = 0, sport = 0, dport = 0;
-	// Get network namespace id, if kernel supports it
-#ifdef CONFIG_NET_NS
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &sk->__sk_common.skc_net);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
-#endif
-	bpf_probe_read(&family, sizeof(family), &sk->__sk_common.skc_family);
+	u32 net_ns_inum;
+	u16 family, sport, dport;
+	family = 0;
+	sport = 0;
+	dport = 0;
+
+	bpf_probe_read(&family, sizeof(family), ((char *)sk) + status->offset_family);
+
+	// Get network namespace id
+	possible_net_t *skc_net;
+
+	skc_net = NULL;
+	net_ns_inum = 0;
+	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)sk) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
+
 	if (family == AF_INET) {
-		u32 saddr = 0, daddr = 0;
-		bpf_probe_read(&saddr, sizeof(saddr), &sk->__sk_common.skc_rcv_saddr);
-		bpf_probe_read(&daddr, sizeof(daddr), &sk->__sk_common.skc_daddr);
-		bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)sk)->inet_sport);
-		bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
+		u32 saddr, daddr;
+		saddr = 0;
+		daddr = 0;
+
+		bpf_probe_read(&saddr, sizeof(saddr), ((char *)sk) + status->offset_saddr);
+		bpf_probe_read(&daddr, sizeof(daddr), ((char *)sk) + status->offset_daddr);
+		bpf_probe_read(&sport, sizeof(sport), ((char *)sk) + status->offset_sport);
+		bpf_probe_read(&dport, sizeof(dport), ((char *)sk) + status->offset_dport);
 		// output
 		struct tcp_ipv4_event_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
-			.cpu = bpf_get_smp_processor_id(),
+			.cpu = cpu,
 			.type = TCP_EVENT_TYPE_CLOSE,
 			.pid = pid >> 32,
 			.saddr = saddr,
@@ -622,27 +668,33 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.netns = net_ns_inum,
 		};
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
+
 		// do not send event if IP address is 0.0.0.0 or port is 0
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_ipv4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_ipv4, cpu, &evt, sizeof(evt));
 		}
 		struct ipv4_tuple_t t = {
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = ntohs(sport),
+			.sport = sport,
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
 		bpf_map_delete_elem(&tuplepid_ipv4, &t);
 	} else if (family == AF_INET6) {
-		u64 saddr_h = 0, saddr_l = 0, daddr_h = 0, daddr_l = 0;
-		bpf_probe_read(&saddr_h, sizeof(saddr_h), &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		bpf_probe_read(&saddr_l, sizeof(saddr_l), &sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&daddr_h, sizeof(daddr_h), &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		bpf_probe_read(&daddr_l, sizeof(daddr_l), &sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&sport, sizeof(sport), &((struct inet_sock *)sk)->inet_sport);
-		bpf_probe_read(&dport, sizeof(dport), &sk->__sk_common.skc_dport);
-		// output
+		u64 saddr_h, saddr_l, daddr_h, daddr_l;
+		saddr_h = 0;
+		saddr_l = 0;
+		daddr_h = 0;
+		daddr_l = 0;
+
+		bpf_probe_read(&daddr_h, sizeof(daddr_h), ((char *)sk) + status->offset_daddr_ipv6);
+		bpf_probe_read(&daddr_l, sizeof(daddr_l), ((char *)sk) + status->offset_daddr_ipv6 + sizeof(u64));
+		bpf_probe_read(&saddr_h, sizeof(saddr_h), ((char *)sk) + status->offset_daddr_ipv6 + 2 * sizeof(u64));
+		bpf_probe_read(&saddr_l, sizeof(saddr_l), ((char *)sk) + status->offset_daddr_ipv6 + 3 * sizeof(u64));
+		bpf_probe_read(&sport, sizeof(sport), ((char *)sk) + status->offset_sport);
+		bpf_probe_read(&dport, sizeof(dport), ((char *)sk) + status->offset_dport);
+
 		struct tcp_ipv6_event_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
 			.cpu = bpf_get_smp_processor_id(),
@@ -652,21 +704,23 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.saddr_l = saddr_l,
 			.daddr_h = daddr_h,
 			.daddr_l = daddr_l,
-			.sport = ntohs(sport),
+			.sport = sport,
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
+
 		// do not send event if IP address is :: or port is 0
 		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_ipv6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_ipv6, cpu, &evt, sizeof(evt));
 		}
+
 		struct ipv6_tuple_t t = {
 			t.saddr_h = saddr_h,
 			t.saddr_l = saddr_l,
 			t.daddr_h = daddr_h,
 			t.daddr_l = daddr_l,
-			t.sport = ntohs(sport),
+			t.sport = sport,
 			t.dport = ntohs(dport),
 			t.netns = net_ns_inum,
 		};
@@ -682,6 +736,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	u64 zero = 0;
 	struct sock *newsk = (struct sock *)PT_REGS_RC(ctx);
 	u64 pid = bpf_get_current_pid_tgid();
+	u32 cpu = bpf_get_smp_processor_id();
 
 	if (newsk == NULL)
 		return 0;
@@ -690,61 +745,68 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	if (status == NULL || status->status != TCPTRACER_STATUS_READY) {
 		return 0;
 	}
-	//
-	// check this is TCP
-	u8 protocol = 0;
-	// workaround for reading the sk_protocol bitfield:
-	bpf_probe_read(&protocol, 1, (void *)((long)&newsk->sk_wmem_queued) - 3);
-	if (protocol != IPPROTO_TCP)
-		return 0;
+
+	// FIXME? assume this is TCP
+	u8 protocol = IPPROTO_TCP;
+
 	// pull in details
-	u16 family = 0, lport = 0, dport = 0;
-	u32 net_ns_inum = 0;
-	bpf_probe_read(&family, sizeof(family), &newsk->__sk_common.skc_family);
-	bpf_probe_read(&lport, sizeof(lport), &newsk->__sk_common.skc_num);
-	bpf_probe_read(&dport, sizeof(dport), &newsk->__sk_common.skc_dport);
-// Get network namespace id, if kernel supports it
-#ifdef CONFIG_NET_NS
-	possible_net_t skc_net;
-	bpf_probe_read(&skc_net, sizeof(skc_net), &newsk->__sk_common.skc_net);
-	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);
-#endif
+	u16 family, lport, dport;
+	u32 net_ns_inum;
+
+	family = 0;
+	lport = 0;
+	dport = 0;
+
+	bpf_probe_read(&family, sizeof(family), ((char *)newsk) + status->offset_family);
+	bpf_probe_read(&dport, sizeof(dport), ((char *)newsk) + status->offset_dport);
+        // lport is right after dport
+	bpf_probe_read(&lport, sizeof(lport), ((char *)newsk) + status->offset_dport + sizeof(dport));
+	// Get network namespace id
+	possible_net_t *skc_net;
+
+	skc_net = NULL;
+	net_ns_inum = 0;
+	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)newsk) + status->offset_netns);
+	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
+
 	if (family == AF_INET) {
 		struct tcp_ipv4_event_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
-			.cpu = bpf_get_smp_processor_id(),
+			.cpu = cpu,
 			.type = TCP_EVENT_TYPE_ACCEPT,
 			.netns = net_ns_inum,
 		};
 		evt.pid = pid >> 32;
-		bpf_probe_read(&evt.saddr, sizeof(u32), &newsk->__sk_common.skc_rcv_saddr);
-		bpf_probe_read(&evt.daddr, sizeof(u32), &newsk->__sk_common.skc_daddr);
+		bpf_probe_read(&evt.saddr, sizeof(u32), ((char *)newsk) + status->offset_saddr);
+		bpf_probe_read(&evt.daddr, sizeof(u32), ((char *)newsk) + status->offset_daddr);
 
 		evt.sport = lport;
 		evt.dport = ntohs(dport);
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
+
 		// do not send event if IP address is 0.0.0.0 or port is 0
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_ipv4, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_ipv4, cpu, &evt, sizeof(evt));
 		}
 	} else if (family == AF_INET6) {
 		struct tcp_ipv6_event_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
-			.cpu = bpf_get_smp_processor_id(),
+			.cpu = cpu,
 			.type = TCP_EVENT_TYPE_ACCEPT,
 			.netns = net_ns_inum,
 		};
 		evt.pid = pid >> 32;
-		bpf_probe_read(&evt.saddr_h, sizeof(evt.saddr_h), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-		bpf_probe_read(&evt.saddr_l, sizeof(evt.saddr_l), &newsk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32[2]);
-		bpf_probe_read(&evt.daddr_h, sizeof(evt.daddr_h), &newsk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
-		bpf_probe_read(&evt.daddr_l, sizeof(evt.daddr_l), &newsk->__sk_common.skc_v6_daddr.in6_u.u6_addr32[2]);
+		bpf_probe_read(&evt.daddr_h, sizeof(u64), ((char *)newsk) + status->offset_daddr_ipv6);
+		bpf_probe_read(&evt.daddr_l, sizeof(u64), ((char *)newsk) + status->offset_daddr_ipv6 + sizeof(u64));
+		bpf_probe_read(&evt.saddr_h, sizeof(u64), ((char *)newsk) + status->offset_daddr_ipv6 + 2 * sizeof(u64));
+		bpf_probe_read(&evt.saddr_l, sizeof(u64), ((char *)newsk) + status->offset_daddr_ipv6 + 3 * sizeof(u64));
+
 		evt.sport = lport;
 		evt.dport = ntohs(dport);
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
 		// do not send event if IP address is :: or port is 0
 		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
-			bpf_perf_event_output(ctx, &tcp_event_ipv6, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+			bpf_perf_event_output(ctx, &tcp_event_ipv6, cpu, &evt, sizeof(evt));
 		}
 	}
 	return 0;
