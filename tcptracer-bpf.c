@@ -139,6 +139,8 @@ struct tcptracer_status_t {
 	u64 offset_family;
 	u64 offset_daddr_ipv6;
 
+	u8 err;
+
 	u32 saddr;
 	u32 daddr;
 	u16 sport;
@@ -233,6 +235,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 			updated_status.offset_ino = status->offset_ino;
 			updated_status.offset_family = status->offset_family;
 			updated_status.offset_daddr_ipv6 = status->offset_daddr_ipv6;
+			updated_status.err = 0;
 			updated_status.saddr = status->saddr;
 			updated_status.daddr = status->daddr;
 			updated_status.sport = status->sport;
@@ -253,6 +256,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 				possible_net_t *possible_skc_net;
 				u32 possible_netns;
 				u16 possible_family;
+				long ret = 0;
 				case 0:
 					possible_saddr = 0;
 					bpf_probe_read(&possible_saddr, sizeof(possible_saddr), ((char *)skp) + status->offset_saddr);
@@ -277,7 +281,15 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 					possible_netns = 0;
 					possible_skc_net = NULL;
 					bpf_probe_read(&possible_skc_net, sizeof(possible_net_t *), ((char *)skp) + status->offset_netns);
-					bpf_probe_read(&possible_netns, sizeof(possible_netns), ((char *)possible_skc_net) + status->offset_ino);
+					// if we get a kernel fault, it means
+					// possible_skc_net is an invalid
+					// pointer, signal an error so we can
+					// go to the next offset_netns
+					ret = bpf_probe_read(&possible_netns, sizeof(possible_netns), ((char *)possible_skc_net) + status->offset_ino);
+					if (ret == -EFAULT) {
+					    updated_status.err = 1;
+					    break;
+					}
 					updated_status.netns = possible_netns;
 					break;
 				case 5:
