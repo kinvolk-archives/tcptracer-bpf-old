@@ -91,10 +91,15 @@ struct bpf_map_def SEC("maps/tcp_event_ipv6") tcp_event_ipv6 = {
 	.max_entries = 1024,
 };
 
-/* This maps is used to match the kprobe & kretprobe of connect
- * it is used for both ipv4 and ipv6.
- */
-struct bpf_map_def SEC("maps/connectsock") connectsock = {
+/* These maps are used to match the kprobe & kretprobe of connect */
+struct bpf_map_def SEC("maps/connectsock_ipv4") connectsock_ipv4 = {
+	.type = BPF_MAP_TYPE_HASH,
+	.key_size = sizeof(__u64),
+	.value_size = sizeof(void *),
+	.max_entries = 1024,
+};
+
+struct bpf_map_def SEC("maps/connectsock_ipv6") connectsock_ipv6 = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u64),
 	.value_size = sizeof(void *),
@@ -151,6 +156,22 @@ struct bpf_map_def SEC("maps/tcptracer_status") tcptracer_status = {
 	.max_entries = 128,
 };
 
+static inline bool check_family(struct sock *sk, u16 expected_family) {
+	struct tcptracer_status_t *status;
+	u64 zero = 0;
+	u16 family;
+	family = 0;
+
+	status = bpf_map_lookup_elem(&tcptracer_status, &zero);
+	if (status == NULL || status->status != TCPTRACER_STATUS_READY) {
+		return 1;
+	}
+
+	bpf_probe_read(&family, sizeof(u16), ((char *)sk) + status->offset_family);
+
+	return family == expected_family;
+}
+
 SEC("kprobe/tcp_v4_connect")
 int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 {
@@ -159,7 +180,7 @@ int kprobe__tcp_v4_connect(struct pt_regs *ctx)
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
-	bpf_map_update_elem(&connectsock, &pid, &sk, BPF_ANY);
+	bpf_map_update_elem(&connectsock_ipv4, &pid, &sk, BPF_ANY);
 
 	return 0;
 }
@@ -173,15 +194,14 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	u64 zero = 0;
 	struct tcptracer_status_t *status;
 
-	skpp = bpf_map_lookup_elem(&connectsock, &pid);
+	skpp = bpf_map_lookup_elem(&connectsock_ipv4, &pid);
 	if (skpp == 0) {
 		return 0;	// missed entry
 	}
-	bpf_map_delete_elem(&connectsock, &pid);
 
 	struct sock *skp = *skpp;
 
-	bpf_map_delete_elem(&connectsock, &pid);
+	bpf_map_delete_elem(&connectsock_ipv4, &pid);
 
 	if (ret != 0) {
 		// failed to send SYNC packet, may not have populated
@@ -330,7 +350,7 @@ int kprobe__tcp_v6_connect(struct pt_regs *ctx)
 
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 
-	bpf_map_update_elem(&connectsock, &pid, &sk, BPF_ANY);
+	bpf_map_update_elem(&connectsock_ipv6, &pid, &sk, BPF_ANY);
 
 	return 0;
 }
@@ -343,12 +363,12 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	u64 zero = 0;
 	struct sock **skpp;
 	struct tcptracer_status_t *status;
-	skpp = bpf_map_lookup_elem(&connectsock, &pid);
+	skpp = bpf_map_lookup_elem(&connectsock_ipv6, &pid);
 	if (skpp == 0) {
 		return 0;	// missed entry
 	}
 
-	bpf_map_delete_elem(&connectsock, &pid);
+	bpf_map_delete_elem(&connectsock_ipv6, &pid);
 
 	struct sock *skp = *skpp;
 
@@ -414,7 +434,6 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 			return 0;
 	}
 
-
 	if (ret != 0) {
 		// failed to send SYNC packet, may not have populated
 		// socket __sk_common.{skc_rcv_saddr, ...}
@@ -465,6 +484,15 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		.netns = net_ns_inum,
 	};
 
+	/*
+	char msg1[] = "CN: saddr_h=%llu, saddr_l=%llu\n";
+	char msg2[] = "CN: daddr_h=%llu, daddr_l=%llu\n";
+	char msg3[] = "CN: sport=%d, dport=%d, netns=%llu\n";
+	bpf_trace_printk(msg1, sizeof(msg1), saddr_h, saddr_l);
+	bpf_trace_printk(msg2, sizeof(msg2), daddr_h, daddr_l);
+	bpf_trace_printk(msg3, sizeof(msg3), sport, ntohs(dport), net_ns_inum);
+	*/
+
 	struct pid_comm p = { };
 	p.pid = pid;
 	bpf_get_current_comm(p.comm, sizeof(p.comm));
@@ -494,19 +522,17 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 	}
 
 	u32 net_ns_inum;
-	u16 sport, dport, family;
+	u16 sport, dport;
 	possible_net_t *skc_net;
 
 	net_ns_inum = 0;
 	sport = 0;
 	dport = 0;
-	family = 0;
 	skc_net = NULL;
 
 	bpf_probe_read(&skc_net, sizeof(void *), ((char *)skp) + status->offset_netns);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
-	bpf_probe_read(&family, sizeof(family), ((char *)skp) + status->offset_family);
-	if (family == AF_INET) {
+	if (check_family(skp, AF_INET)) {
 		u32 saddr, daddr;
 		saddr = 0;
 		daddr = 0;
@@ -553,7 +579,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		cpu = bpf_get_smp_processor_id();
 		bpf_perf_event_output(ctx, &tcp_event_ipv4, cpu, &evt4, sizeof(evt4));
 		bpf_map_delete_elem(&tuplepid_ipv4, &t);
-	} else if (family == AF_INET6) {
+	} else if (check_family(skp, AF_INET6)) {
 		u64 saddr_h, saddr_l, daddr_h, daddr_l;
 		saddr_h = 0;
 		saddr_l = 0;
@@ -581,6 +607,14 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 			t.dport = ntohs(dport),
 			t.netns = net_ns_inum,
 		};
+
+		char msg1[] = "SS: saddr_h=%llu, saddr_l=%llu\n";
+		char msg2[] = "SS: daddr_h=%llu, daddr_l=%llu\n";
+		char msg3[] = "SS: sport=%d, dport=%d, netns=%llu\n";
+		bpf_trace_printk(msg1, sizeof(msg1), saddr_h, saddr_l);
+		bpf_trace_printk(msg2, sizeof(msg2), daddr_h, daddr_l);
+		bpf_trace_printk(msg3, sizeof(msg3), sport, ntohs(dport), net_ns_inum);
+
 		struct pid_comm *pp;
 		pp = bpf_map_lookup_elem(&tuplepid_ipv6, &t);
 		if (pp == 0) {
@@ -631,12 +665,9 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	}
 
 	u32 net_ns_inum;
-	u16 family, sport, dport;
-	family = 0;
+	u16 sport, dport;
 	sport = 0;
 	dport = 0;
-
-	bpf_probe_read(&family, sizeof(family), ((char *)sk) + status->offset_family);
 
 	// Get network namespace id
 	possible_net_t *skc_net;
@@ -646,7 +677,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)sk) + status->offset_netns);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
-	if (family == AF_INET) {
+	if (check_family(sk, AF_INET)) {
 		u32 saddr, daddr;
 		saddr = 0;
 		daddr = 0;
@@ -681,7 +712,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.netns = net_ns_inum,
 		};
 		bpf_map_delete_elem(&tuplepid_ipv4, &t);
-	} else if (family == AF_INET6) {
+	} else if (check_family(sk, AF_INET6)) {
 		u64 saddr_h, saddr_l, daddr_h, daddr_l;
 		saddr_h = 0;
 		saddr_l = 0;
@@ -750,14 +781,12 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	u8 protocol = IPPROTO_TCP;
 
 	// pull in details
-	u16 family, lport, dport;
+	u16 lport, dport;
 	u32 net_ns_inum;
 
-	family = 0;
 	lport = 0;
 	dport = 0;
 
-	bpf_probe_read(&family, sizeof(family), ((char *)newsk) + status->offset_family);
 	bpf_probe_read(&dport, sizeof(dport), ((char *)newsk) + status->offset_dport);
         // lport is right after dport
 	bpf_probe_read(&lport, sizeof(lport), ((char *)newsk) + status->offset_dport + sizeof(dport));
@@ -769,7 +798,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 	bpf_probe_read(&skc_net, sizeof(possible_net_t *), ((char *)newsk) + status->offset_netns);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), ((char *)skc_net) + status->offset_ino);
 
-	if (family == AF_INET) {
+	if (check_family(newsk, AF_INET)) {
 		struct tcp_ipv4_event_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
 			.cpu = cpu,
@@ -788,7 +817,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		if (evt.saddr != 0 && evt.daddr != 0 && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_ipv4, cpu, &evt, sizeof(evt));
 		}
-	} else if (family == AF_INET6) {
+	} else if (check_family(newsk, AF_INET6)) {
 		struct tcp_ipv6_event_t evt = {
 			.timestamp = bpf_ktime_get_ns(),
 			.cpu = cpu,
