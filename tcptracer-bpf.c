@@ -484,15 +484,6 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		.netns = net_ns_inum,
 	};
 
-	/*
-	char msg1[] = "CN: saddr_h=%llu, saddr_l=%llu\n";
-	char msg2[] = "CN: daddr_h=%llu, daddr_l=%llu\n";
-	char msg3[] = "CN: sport=%d, dport=%d, netns=%llu\n";
-	bpf_trace_printk(msg1, sizeof(msg1), saddr_h, saddr_l);
-	bpf_trace_printk(msg2, sizeof(msg2), daddr_h, daddr_l);
-	bpf_trace_printk(msg3, sizeof(msg3), sport, ntohs(dport), net_ns_inum);
-	*/
-
 	struct pid_comm p = { };
 	p.pid = pid;
 	bpf_get_current_comm(p.comm, sizeof(p.comm));
@@ -607,13 +598,6 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 			t.dport = ntohs(dport),
 			t.netns = net_ns_inum,
 		};
-
-		char msg1[] = "SS: saddr_h=%llu, saddr_l=%llu\n";
-		char msg2[] = "SS: daddr_h=%llu, daddr_l=%llu\n";
-		char msg3[] = "SS: sport=%d, dport=%d, netns=%llu\n";
-		bpf_trace_printk(msg1, sizeof(msg1), saddr_h, saddr_l);
-		bpf_trace_printk(msg2, sizeof(msg2), daddr_h, daddr_l);
-		bpf_trace_printk(msg3, sizeof(msg3), sport, ntohs(dport), net_ns_inum);
 
 		struct pid_comm *pp;
 		pp = bpf_map_lookup_elem(&tuplepid_ipv6, &t);
