@@ -372,6 +372,15 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 	sk = (struct sock *) PT_REGS_PARM1(ctx);
 	u32 net_ns_inum = 0;
 	u16 family = 0, sport = 0, dport = 0;
+	unsigned char oldstate;
+
+	oldstate = 0;
+	bpf_probe_read(&oldstate, sizeof(unsigned char), (unsigned char *)&sk->sk_state);
+	// Don't generate close events for connections that were never
+	// established in the first place.
+	if (oldstate == TCP_SYN_SENT || oldstate == TCP_SYN_RECV || oldstate == TCP_NEW_SYN_RECV)
+		return 0;
+
 	// Get network namespace id, if kernel supports it
 #ifdef CONFIG_NET_NS
 	possible_net_t skc_net;
