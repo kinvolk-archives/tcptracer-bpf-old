@@ -2,9 +2,30 @@
 set -xe
 
 make fedora-24
-make arch
-make debian-testing
-make coreos
+
+RKT_IMAGE=quay.io/alban/rkt:ebpf
+docker pull ${RKT_IMAGE}
+CONTAINER_ID=$(docker run -d ${RKT_IMAGE} /bin/false 2>/dev/null || true)
+docker export -o rkt.tgz ${CONTAINER_ID}
+mkdir -p rkt
+tar xvf rkt.tgz -C rkt/
+
+sudo ./rkt/rkt \
+	run --interactive \
+	--insecure-options=image,all-run \
+	--dns=8.8.8.8 \
+	--stage1-path=./rkt/stage1-kvm.aci \
+	--volume=ebpf,kind=host,source=$PWD \
+	docker://debian \
+	--mount=volume=ebpf,target=/ebpf \
+	--exec=/bin/sh -- -c \
+	'cd /ebpf ; \
+		mount -t tmpfs tmpfs /tmp ; \
+		mount -t debugfs debugfs /sys/kernel/debug/ ; \
+		ls -l ; find'
+
+exit 0
+
 
 ./tools/export-elfs-into-container
 
