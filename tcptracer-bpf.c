@@ -128,6 +128,33 @@ struct bpf_map_def SEC("maps/tuplepid_ipv6") tuplepid_ipv6 = {
 	.max_entries = 1024,
 };
 
+/* http://stackoverflow.com/questions/1001307/detecting-endianness-programmatically-in-a-c-program */
+static inline bool is_big_endian(void)
+{
+	union {
+		uint32_t i;
+		char c[4];
+	} bint = {0x01020304};
+
+	return bint.c[0] == 1;
+}
+
+/* check if IPs are IPv4 mapped to IPv6 ::ffff:xxxx:xxxx
+ * https://tools.ietf.org/html/rfc4291#section-2.5.5
+ * the addresses are stored in network byte order so IPv4 adddress is stored
+ * in the most significant 32 bits of part saddr_l and daddr_l.
+ * Meanwhile the end of the mask is stored in the least significant 32 bits.
+ */
+static inline bool is_ipv4_mapped_ipv6(u64 saddr_h, u64 saddr_l, u64 daddr_h, u64 daddr_l) {
+	if (is_big_endian()) {
+		return ((saddr_h == 0 && ((u32)(saddr_l >> 32) == 0x0000FFFF)) ||
+                        (daddr_h == 0 && ((u32)(daddr_l >> 32) == 0x0000FFFF)));
+	} else {
+		return ((saddr_h == 0 && ((u32)saddr_l == 0xFFFF0000)) ||
+                        (daddr_h == 0 && ((u32)daddr_l == 0xFFFF0000)));
+	}
+}
+
 #define TCPTRACER_STATUS_UNINITIALIZED 0
 #define TCPTRACER_STATUS_CHECKING      1
 #define TCPTRACER_STATUS_CHECKED       2
@@ -509,8 +536,20 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 	struct pid_comm p = { };
 	p.pid = pid;
 	bpf_get_current_comm(p.comm, sizeof(p.comm));
-	bpf_map_update_elem(&tuplepid_ipv6, &t, &p, BPF_ANY);
 
+	if (is_ipv4_mapped_ipv6(saddr_h, saddr_l, daddr_h, daddr_l)) {
+		struct ipv4_tuple_t t4 = {
+			.netns = net_ns_inum,
+			.saddr = (u32)(t.saddr_l >> 32),
+			.daddr = (u32)(t.daddr_l >> 32),
+			.sport = sport,
+			.dport = ntohs(dport),
+		};
+		bpf_map_update_elem(&tuplepid_ipv4, &t, &p, BPF_ANY);
+		return 0;
+	}
+
+	bpf_map_update_elem(&tuplepid_ipv6, &t, &p, BPF_ANY);
 	return 0;
 }
 
@@ -761,6 +800,23 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			t.dport = ntohs(dport),
 			t.netns = net_ns_inum,
 		};
+		if (is_ipv4_mapped_ipv6(saddr_h, saddr_l, daddr_h, daddr_l)) {
+			struct tcp_ipv4_event_t evt4 = {
+				.timestamp = bpf_ktime_get_ns(),
+				.cpu = bpf_get_smp_processor_id(),
+				.pid = pid >> 32,
+				.type = TCP_EVENT_TYPE_CLOSE,
+				.netns = net_ns_inum,
+				.saddr = (u32)(saddr_l >> 32),
+				.daddr = (u32)(daddr_l >> 32),
+				.sport = sport,
+				.dport = ntohs(dport),
+			};
+			bpf_get_current_comm(&evt4.comm, sizeof(evt4.comm));
+			bpf_perf_event_output(ctx, &tcp_event_ipv4, BPF_F_CURRENT_CPU, &evt4, sizeof(evt4));
+			return 0;
+		}
+
 		bpf_map_delete_elem(&tuplepid_ipv6, &t);
 	}
 	return 0;
@@ -839,6 +895,22 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 		evt.sport = lport;
 		evt.dport = ntohs(dport);
 		bpf_get_current_comm(&evt.comm, sizeof(evt.comm));
+		if (is_ipv4_mapped_ipv6(evt.saddr_h, evt.saddr_l, evt.daddr_h, evt.daddr_l)) {
+			struct tcp_ipv4_event_t evt4 = {
+				.timestamp = bpf_ktime_get_ns(),
+				.cpu = bpf_get_smp_processor_id(),
+				.pid = pid >> 32,
+				.type = TCP_EVENT_TYPE_ACCEPT,
+				.netns = net_ns_inum,
+				.saddr = (u32)(evt.saddr_l >> 32),
+				.daddr = (u32)(evt.daddr_l >> 32),
+				.sport = evt.sport,
+				.dport = evt.dport,
+			};
+			bpf_get_current_comm(&evt4.comm, sizeof(evt4.comm));
+			bpf_perf_event_output(ctx, &tcp_event_ipv4, BPF_F_CURRENT_CPU, &evt4, sizeof(evt4));
+			return 0;
+		}
 		// do not send event if IP address is :: or port is 0
 		if ((evt.saddr_h || evt.saddr_l) && (evt.daddr_h || evt.daddr_l) && evt.sport != 0 && evt.dport != 0) {
 			bpf_perf_event_output(ctx, &tcp_event_ipv6, cpu, &evt, sizeof(evt));
