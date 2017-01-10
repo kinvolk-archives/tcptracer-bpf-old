@@ -1,7 +1,5 @@
-LINUX_VERSION=$(shell make -f environments/$(DISTRO).mk linux-version)
-LINUX_HEADERS=$(shell make -f environments/$(DISTRO).mk linux-headers)
-DISTRO_ID=$(shell make -f environments/$(DISTRO).mk distro-id)
-DEST_DIR=/dist/$(DISTRO_ID)/$(shell uname -m)/$(LINUX_VERSION)
+DEST_DIR=/dist
+LINUX_HEADERS=$(shell dnf list kernel-devel | awk '/^kernel-devel\..*/{print "/usr/src/kernels/"$$2".x86_64"}')
 
 build:
 	@mkdir -p "$(DEST_DIR)"
