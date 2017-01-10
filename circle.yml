@@ -14,8 +14,7 @@ machine:
 dependencies:
   override:
     - |
-      cd $SRCDIR && make fedora-24 && make arch && make debian-testing
-      test "$CIRCLECI" == "true" || make coreos
+      cd $SRCDIR && make
       ./tools/export-elfs-into-container
       docker tag kinvolk/tcptracer-bpf:latest kinvolk/tcptracer-bpf:$(./tools/image-tag)
 
