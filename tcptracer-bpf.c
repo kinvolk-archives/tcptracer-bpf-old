@@ -813,7 +813,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 				.dport = ntohs(dport),
 			};
 			bpf_get_current_comm(&evt4.comm, sizeof(evt4.comm));
-			bpf_perf_event_output(ctx, &tcp_event_ipv4, BPF_F_CURRENT_CPU, &evt4, sizeof(evt4));
+			bpf_perf_event_output(ctx, &tcp_event_ipv4, evt4.cpu, &evt4, sizeof(evt4));
 			return 0;
 		}
 
@@ -908,7 +908,7 @@ int kretprobe__inet_csk_accept(struct pt_regs *ctx)
 				.dport = evt.dport,
 			};
 			bpf_get_current_comm(&evt4.comm, sizeof(evt4.comm));
-			bpf_perf_event_output(ctx, &tcp_event_ipv4, BPF_F_CURRENT_CPU, &evt4, sizeof(evt4));
+			bpf_perf_event_output(ctx, &tcp_event_ipv4, evt4.cpu, &evt4, sizeof(evt4));
 			return 0;
 		}
 		// do not send event if IP address is :: or port is 0
