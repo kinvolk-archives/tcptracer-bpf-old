@@ -15,10 +15,10 @@
 
 #define GUESS_SADDR      0
 #define GUESS_DADDR      1
-#define GUESS_SPORT      2
-#define GUESS_DPORT      3
-#define GUESS_NETNS      4
-#define GUESS_FAMILY     5
+#define GUESS_FAMILY     2
+#define GUESS_SPORT      3
+#define GUESS_DPORT      4
+#define GUESS_NETNS      5
 #define GUESS_DADDR_IPV6 6
 
 struct tcp_ipv4_event_t {
@@ -303,6 +303,11 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 					bpf_probe_read(&possible_daddr, sizeof(possible_daddr), ((char *)skp) + status->offset_daddr);
 					updated_status.daddr = possible_daddr;
 					break;
+				case GUESS_FAMILY:
+					possible_family = 0;
+					bpf_probe_read(&possible_family, sizeof(possible_family), ((char *)skp) + status->offset_family);
+					updated_status.family = possible_family;
+					break;
 				case GUESS_SPORT:
 					possible_sport = 0;
 					bpf_probe_read(&possible_sport, sizeof(possible_sport), ((char *)skp) + status->offset_sport);
@@ -327,11 +332,6 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 					    break;
 					}
 					updated_status.netns = possible_netns;
-					break;
-				case GUESS_FAMILY:
-					possible_family = 0;
-					bpf_probe_read(&possible_family, sizeof(possible_family), ((char *)skp) + status->offset_family);
-					updated_status.family = possible_family;
 					break;
 				default:
 					// not for us
