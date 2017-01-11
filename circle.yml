@@ -14,8 +14,8 @@ machine:
 dependencies:
   override:
     - |
-      cd $SRCDIR && make
-      ./tools/export-elfs-into-container
+      cd $SRCDIR && make &&
+      ./tools/export-elfs-into-container &&
       docker tag kinvolk/tcptracer-bpf:latest kinvolk/tcptracer-bpf:$(./tools/image-tag)
 
 test:
