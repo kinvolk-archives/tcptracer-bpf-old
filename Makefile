@@ -5,7 +5,7 @@ PWD=$(shell pwd)
 DOCKER_FILE?=Dockerfile
 DOCKER_IMAGE?=kinvolk/tcptracer-bpf-builder
 
-all: build-docker-image build-ebpf-object delete-docker-image
+all: build-docker-image build-ebpf-object
 
 build-docker-image:
 	sudo docker build -t $(DOCKER_IMAGE) -f $(DOCKER_FILE) .
@@ -18,4 +18,4 @@ build-ebpf-object:
 	sudo chown -R $(UID):$(UID) ebpf
 
 delete-docker-image:
-	@if test "$$CI" = "true"; then sudo docker rmi $(DOCKER_IMAGE); else echo "not in CI: not removing docker images"; fi
+	sudo docker rmi -f $(DOCKER_IMAGE)
