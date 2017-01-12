@@ -378,7 +378,7 @@ int kretprobe__tcp_v4_connect(struct pt_regs *ctx)
 	struct ipv4_tuple_t t = {
 		.saddr = saddr,
 		.daddr = daddr,
-		.sport = sport,
+		.sport = ntohs(sport),
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
 	};
@@ -528,7 +528,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 		.saddr_l = saddr_l,
 		.daddr_h = daddr_h,
 		.daddr_l = daddr_l,
-		.sport = sport,
+		.sport = ntohs(sport),
 		.dport = ntohs(dport),
 		.netns = net_ns_inum,
 	};
@@ -542,7 +542,7 @@ int kretprobe__tcp_v6_connect(struct pt_regs *ctx)
 			.netns = net_ns_inum,
 			.saddr = (u32)(t.saddr_l >> 32),
 			.daddr = (u32)(t.daddr_l >> 32),
-			.sport = sport,
+			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 		};
 		bpf_map_update_elem(&tuplepid_ipv4, &t, &p, BPF_ANY);
@@ -600,7 +600,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 		struct ipv4_tuple_t t = {
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = sport,
+			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -618,7 +618,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 			.pid = p.pid >> 32,
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = sport,
+			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -655,7 +655,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 			t.saddr_l = saddr_l,
 			t.daddr_h = daddr_h,
 			t.daddr_l = daddr_l,
-			t.sport = sport,
+			t.sport = ntohs(sport),
 			t.dport = ntohs(dport),
 			t.netns = net_ns_inum,
 		};
@@ -676,7 +676,7 @@ int kprobe__tcp_set_state(struct pt_regs *ctx)
 			.saddr_l = saddr_l,
 			.daddr_h = daddr_h,
 			.daddr_l = daddr_l,
-			.sport = sport,
+			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -739,7 +739,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.pid = pid >> 32,
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = sport,
+			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -752,7 +752,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 		struct ipv4_tuple_t t = {
 			.saddr = saddr,
 			.daddr = daddr,
-			.sport = sport,
+			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -780,7 +780,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			.saddr_l = saddr_l,
 			.daddr_h = daddr_h,
 			.daddr_l = daddr_l,
-			.sport = sport,
+			.sport = ntohs(sport),
 			.dport = ntohs(dport),
 			.netns = net_ns_inum,
 		};
@@ -796,7 +796,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 			t.saddr_l = saddr_l,
 			t.daddr_h = daddr_h,
 			t.daddr_l = daddr_l,
-			t.sport = sport,
+			t.sport = ntohs(sport),
 			t.dport = ntohs(dport),
 			t.netns = net_ns_inum,
 		};
@@ -809,7 +809,7 @@ int kprobe__tcp_close(struct pt_regs *ctx)
 				.netns = net_ns_inum,
 				.saddr = (u32)(saddr_l >> 32),
 				.daddr = (u32)(daddr_l >> 32),
-				.sport = sport,
+				.sport = ntohs(sport),
 				.dport = ntohs(dport),
 			};
 			bpf_get_current_comm(&evt4.comm, sizeof(evt4.comm));
