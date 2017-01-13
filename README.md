@@ -1,16 +1,25 @@
-This is an experiment under development to build eBPF tcptracer objects
-for different distributions and kernel versions.
+# tcptracer-bpf
 
-Goal is to be able to load the compiled ebpf object files without dependencies
-on kernel headers in production, so [bcc](https://github.com/iovisor/bcc)
-cannot be used in this case.
+tcptracer-bpf is an eBPF program using kprobes to trace TCP events. It's
+built as an object file that can be used with the [gobpf elf package](https://github.com/iovisor/gobpf).
+It does not have any run-time dependencies and adapts to the currently running
+kernel at run-time. It does not use [bcc](https://github.com/iovisor/bcc)
+because that would introduce a run-time dependency on the kernel headers.
 
-The generated object files can be used and tested with the
-[gobpf-elf-loader](https://github.com/kinvolk/gobpf-elf-loader).
+See `tests/tracer.go` for an example how to use tcptracer-bpf with gobpf.
 
-## Usage
+## Build the elf object
 
 ```
-make <environment> # build an environment, e.g.
-make fedora-24
+make
+```
+
+The object file can be found in `ebpf/ebpf.o`.
+
+## Test
+
+```
+cd tests
+make
+sudo ./run
 ```
