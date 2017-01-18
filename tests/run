@@ -45,7 +45,10 @@ nsenter --net="${netns}" nc 127.0.0.1 "${port}" &
 lines_found=0
 lines_read=0
 while [[ $lines_read -lt 4 ]]; do
-  read -r -u 3 line
+  read -t 1 -r -u 3 line
+  if [[ $? -ne 0 ]]; then
+    break
+  fi
   # 48704147610580 cpu#1 connect 2074 nc 127.0.0.1:52414 127.0.0.1:61111 4026532567
   if [[ "$line" =~ ^[0-9]+\ cpu#[0-9]\ ([a-z]+)\ [0-9]+\ nc\ (127.0.0.1\:[0-9]+)\ (127.0.0.1\:[0-9]+)\ [0-9]+$ ]]; then
     action=${BASH_REMATCH[1]}
